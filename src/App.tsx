@@ -1,5 +1,5 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ClerkProvider, SignIn, SignUp, RedirectToSignIn } from '@clerk/clerk-react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ClerkProvider, SignIn, SignUp, SignedIn, SignedOut } from '@clerk/clerk-react';
 import Dashboard from './pages/Dashboard';
 
 // Debug environment variables
@@ -24,10 +24,43 @@ function App() {
     <ClerkProvider publishableKey={clerkPubKey}>
       <Router>
         <Routes>
-          <Route path="/sign-in/*" element={<SignIn routing="path" path="/sign-in" />} />
-          <Route path="/sign-up/*" element={<SignUp routing="path" path="/sign-up" />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/" element={<RedirectToSignIn />} />
+          <Route
+            path="/"
+            element={
+              <>
+                <SignedIn>
+                  <Navigate to="/dashboard" replace />
+                </SignedIn>
+                <SignedOut>
+                  <Navigate to="/sign-in" replace />
+                </SignedOut>
+              </>
+            }
+          />
+          <Route
+            path="/sign-in/*"
+            element={
+              <SignedOut>
+                <SignIn routing="path" path="/sign-in" />
+              </SignedOut>
+            }
+          />
+          <Route
+            path="/sign-up/*"
+            element={
+              <SignedOut>
+                <SignUp routing="path" path="/sign-up" />
+              </SignedOut>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <SignedIn>
+                <Dashboard />
+              </SignedIn>
+            }
+          />
         </Routes>
       </Router>
     </ClerkProvider>

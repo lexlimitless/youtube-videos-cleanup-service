@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Plus, Pencil, Trash2, LogOut } from 'lucide-react';
+import { Plus, Pencil, Trash2, LogOut, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUser, useClerk } from '@clerk/clerk-react';
 import { supabase } from '../lib/supabase';
@@ -25,28 +25,8 @@ const Dashboard = () => {
   const { signOut } = useClerk();
 
   useEffect(() => {
-    if (!user) {
-      navigate('/sign-in');
-      return;
-    }
-    setupSupabase();
     fetchQRCodes();
-  }, [user]);
-
-  const setupSupabase = async () => {
-    if (!user) return;
-    
-    try {
-      const { error } = await supabase.rpc('set_clerk_user_id', {
-        user_id: user.id
-      });
-      if (error) {
-        console.error('Error setting user ID:', error);
-      }
-    } catch (error) {
-      console.error('Error in setupSupabase:', error);
-    }
-  };
+  }, []);
 
   const fetchQRCodes = async () => {
     if (!user) return;
@@ -55,6 +35,7 @@ const Dashboard = () => {
       const { data, error } = await supabase
         .from('qr_codes')
         .select('*')
+        .eq('clerk_user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -67,12 +48,7 @@ const Dashboard = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!user) {
-      toast.error('Please sign in to continue');
-      navigate('/sign-in');
-      return;
-    }
+    if (!user) return;
 
     try {
       if (editingId) {
@@ -116,11 +92,7 @@ const Dashboard = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!user) {
-      toast.error('Please sign in to continue');
-      navigate('/sign-in');
-      return;
-    }
+    if (!user) return;
 
     try {
       const { error } = await supabase
@@ -141,6 +113,53 @@ const Dashboard = () => {
   const handleSignOut = async () => {
     await signOut();
     navigate('/sign-in');
+  };
+
+  const handleDownload = async (qrCode: QRCode) => {
+    try {
+      // Create a temporary container for the SVG
+      const container = document.createElement('div');
+      container.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+        ${document.getElementById(`qr-${qrCode.id}`)?.innerHTML || ''}
+      </svg>`;
+      
+      const svgElement = container.firstChild as SVGElement;
+      const canvas = document.createElement('canvas');
+      canvas.width = 200;
+      canvas.height = 200;
+      
+      // Convert SVG to data URL
+      const svgData = new XMLSerializer().serializeToString(svgElement);
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const svgUrl = URL.createObjectURL(svgBlob);
+      
+      // Create image from SVG
+      const img = new Image();
+      img.src = svgUrl;
+      
+      await new Promise((resolve) => {
+        img.onload = () => {
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0);
+          URL.revokeObjectURL(svgUrl);
+          resolve(null);
+        };
+      });
+      
+      // Convert canvas to PNG and download
+      const pngUrl = canvas.toDataURL('image/png');
+      const downloadLink = document.createElement('a');
+      downloadLink.href = pngUrl;
+      downloadLink.download = `${qrCode.name}-qr-code.png`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      
+      toast.success('QR code downloaded successfully');
+    } catch (error) {
+      console.error('Error downloading QR code:', error);
+      toast.error('Failed to download QR code');
+    }
   };
 
   return (
@@ -176,21 +195,32 @@ const Dashboard = () => {
                 <h3 className="text-xl font-semibold text-[#15342b]">{qrCode.name}</h3>
                 <div className="flex gap-2">
                   <button
+                    onClick={() => handleDownload(qrCode)}
+                    className="text-gray-600 hover:text-[#15342b]"
+                    title="Download QR Code"
+                  >
+                    <Download size={20} />
+                  </button>
+                  <button
                     onClick={() => handleEdit(qrCode)}
                     className="text-gray-600 hover:text-[#15342b]"
+                    title="Edit QR Code"
                   >
                     <Pencil size={20} />
                   </button>
                   <button
                     onClick={() => handleDelete(qrCode.id)}
                     className="text-gray-600 hover:text-red-600"
+                    title="Delete QR Code"
                   >
                     <Trash2 size={20} />
                   </button>
                 </div>
               </div>
               <div className="flex justify-center mb-4">
-                <QRCodeSVG value={qrCode.url} size={200} />
+                <div id={`qr-${qrCode.id}`}>
+                  <QRCodeSVG value={qrCode.url} size={200} />
+                </div>
               </div>
               <a
                 href={qrCode.url}
