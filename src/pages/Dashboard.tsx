@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Plus, Pencil, Trash2, LogOut } from 'lucide-react';
-import { supabase } from '../lib/supabase';
 import { useNavigate } from 'react-router-dom';
+import { useUser, useClerk } from '@clerk/clerk-react';
+import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 interface QRCode {
@@ -10,6 +11,7 @@ interface QRCode {
   name: string;
   url: string;
   created_at: string;
+  clerk_user_id: string;
 }
 
 const Dashboard = () => {
@@ -19,64 +21,76 @@ const Dashboard = () => {
   const [url, setUrl] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { user } = useUser();
+  const { signOut } = useClerk();
 
   useEffect(() => {
-    checkUser();
+    if (!user) {
+      navigate('/sign-in');
+      return;
+    }
+    setupSupabase();
     fetchQRCodes();
-  }, []);
+  }, [user]);
 
-  const checkUser = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      navigate('/login');
+  const setupSupabase = async () => {
+    if (!user) return;
+    
+    try {
+      const { error } = await supabase.rpc('set_clerk_user_id', {
+        user_id: user.id
+      });
+      if (error) {
+        console.error('Error setting user ID:', error);
+      }
+    } catch (error) {
+      console.error('Error in setupSupabase:', error);
     }
   };
 
   const fetchQRCodes = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!user) return;
 
-    const { data, error } = await supabase
-      .from('qr_codes')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('qr_codes')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (error) {
+      if (error) throw error;
+      setQrCodes(data || []);
+    } catch (error: any) {
       toast.error('Error fetching QR codes');
-      return;
+      console.error('Error:', error);
     }
-
-    setQrCodes(data || []);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast.error('Please sign in to continue');
-        navigate('/login');
-        return;
-      }
+    if (!user) {
+      toast.error('Please sign in to continue');
+      navigate('/sign-in');
+      return;
+    }
 
+    try {
       if (editingId) {
         const { error } = await supabase
           .from('qr_codes')
           .update({ name, url })
           .eq('id', editingId)
-          .eq('user_id', session.user.id);
+          .eq('clerk_user_id', user.id);
 
         if (error) throw error;
         toast.success('QR code updated successfully');
       } else {
         const { error } = await supabase
           .from('qr_codes')
-          .insert([{ 
-            name, 
+          .insert([{
+            name,
             url,
-            user_id: session.user.id 
+            clerk_user_id: user.id
           }]);
 
         if (error) throw error;
@@ -90,6 +104,7 @@ const Dashboard = () => {
       fetchQRCodes();
     } catch (error: any) {
       toast.error(error.message);
+      console.error('Error:', error);
     }
   };
 
@@ -101,31 +116,31 @@ const Dashboard = () => {
   };
 
   const handleDelete = async (id: string) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast.error('Please sign in to continue');
-        navigate('/login');
-        return;
-      }
+    if (!user) {
+      toast.error('Please sign in to continue');
+      navigate('/sign-in');
+      return;
+    }
 
+    try {
       const { error } = await supabase
         .from('qr_codes')
         .delete()
         .eq('id', id)
-        .eq('user_id', session.user.id);
+        .eq('clerk_user_id', user.id);
 
       if (error) throw error;
       toast.success('QR code deleted successfully');
       fetchQRCodes();
     } catch (error: any) {
       toast.error(error.message);
+      console.error('Error:', error);
     }
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate('/login');
+    await signOut();
+    navigate('/sign-in');
   };
 
   return (
