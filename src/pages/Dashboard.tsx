@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Plus, Pencil, Trash2, LogOut, Download } from 'lucide-react';
+import { Plus, Pencil, Trash2, LogOut, Download, BarChart2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUser, useClerk } from '@clerk/clerk-react';
 import { supabase } from '../lib/supabase';
@@ -10,13 +10,28 @@ interface QRCode {
   id: string;
   name: string;
   url: string;
+  original_url: string;
+  redirect_id: string;
+  click_count: number;
+  last_clicked: string;
   created_at: string;
   clerk_user_id: string;
+}
+
+interface QRCodeClick {
+  clicked_at: string;
+  ip_address: string;
+  user_agent: string;
+  country?: string;
+  city?: string;
 }
 
 const Dashboard = () => {
   const [qrCodes, setQrCodes] = useState<QRCode[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [selectedQRCode, setSelectedQRCode] = useState<QRCode | null>(null);
+  const [clicks, setClicks] = useState<QRCodeClick[]>([]);
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -46,15 +61,43 @@ const Dashboard = () => {
     }
   };
 
+  const fetchQRCodeClicks = async (qrCode: QRCode) => {
+    try {
+      const { data, error } = await supabase
+        .from('qr_code_clicks')
+        .select('*')
+        .eq('qr_code_id', qrCode.id)
+        .order('clicked_at', { ascending: false });
+
+      if (error) throw error;
+      setClicks(data || []);
+      setSelectedQRCode(qrCode);
+      setShowStatsModal(true);
+    } catch (error: any) {
+      toast.error('Error fetching click statistics');
+      console.error('Error:', error);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
 
     try {
       if (editingId) {
+        // Get the current QR code being edited
+        const currentQRCode = qrCodes.find(code => code.id === editingId);
+        if (!currentQRCode) {
+          throw new Error('QR code not found');
+        }
+
         const { error } = await supabase
           .from('qr_codes')
-          .update({ name, url })
+          .update({ 
+            name,
+            original_url: url,
+            url: `${window.location.origin}/redirect/${currentQRCode.redirect_id}`
+          })
           .eq('id', editingId)
           .eq('clerk_user_id', user.id);
 
@@ -65,7 +108,7 @@ const Dashboard = () => {
           .from('qr_codes')
           .insert([{
             name,
-            url,
+            original_url: url,
             clerk_user_id: user.id
           }]);
 
@@ -192,8 +235,21 @@ const Dashboard = () => {
           {qrCodes.map((qrCode) => (
             <div key={qrCode.id} className="bg-white p-6 rounded-lg shadow-md">
               <div className="flex justify-between items-start mb-4">
-                <h3 className="text-xl font-semibold text-[#15342b]">{qrCode.name}</h3>
+                <div>
+                  <h3 className="text-xl font-semibold text-[#15342b]">{qrCode.name}</h3>
+                  <p className="text-sm text-gray-500">
+                    {qrCode.click_count} clicks
+                    {qrCode.last_clicked && ` • Last clicked ${new Date(qrCode.last_clicked).toLocaleDateString()}`}
+                  </p>
+                </div>
                 <div className="flex gap-2">
+                  <button
+                    onClick={() => fetchQRCodeClicks(qrCode)}
+                    className="text-gray-600 hover:text-[#15342b]"
+                    title="View Statistics"
+                  >
+                    <BarChart2 size={20} />
+                  </button>
                   <button
                     onClick={() => handleDownload(qrCode)}
                     className="text-gray-600 hover:text-[#15342b]"
@@ -219,17 +275,27 @@ const Dashboard = () => {
               </div>
               <div className="flex justify-center mb-4">
                 <div id={`qr-${qrCode.id}`}>
-                  <QRCodeSVG value={qrCode.url} size={200} />
+                  <QRCodeSVG 
+                    value={`${window.location.origin}/redirect/${qrCode.redirect_id}`}
+                    size={200}
+                  />
                 </div>
               </div>
-              <a
-                href={qrCode.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-gray-600 hover:text-[#15342b] break-all"
-              >
-                {qrCode.url}
-              </a>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-700">Original URL:</p>
+                <a
+                  href={qrCode.original_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-gray-600 hover:text-[#15342b] break-all"
+                >
+                  {qrCode.original_url}
+                </a>
+                <p className="text-sm font-medium text-gray-700 mt-2">Tracking URL:</p>
+                <p className="text-sm text-gray-600 break-all">
+                  {`${window.location.origin}/redirect/${qrCode.redirect_id}`}
+                </p>
+              </div>
             </div>
           ))}
         </div>
@@ -277,6 +343,62 @@ const Dashboard = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {showStatsModal && selectedQRCode && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-[#15342b]">
+                  Statistics for {selectedQRCode.name}
+                </h2>
+                <button
+                  onClick={() => setShowStatsModal(false)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  ×
+                </button>
+              </div>
+              
+              <div className="mb-6">
+                <p className="text-lg font-semibold">Total Clicks: {selectedQRCode.click_count}</p>
+                {selectedQRCode.last_clicked && (
+                  <p className="text-gray-600">
+                    Last clicked: {new Date(selectedQRCode.last_clicked).toLocaleString()}
+                  </p>
+                )}
+              </div>
+
+              <div className="max-h-96 overflow-y-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-2">Date</th>
+                      <th className="text-left p-2">Location</th>
+                      <th className="text-left p-2">Device</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clicks.map((click, index) => (
+                      <tr key={index} className="border-b">
+                        <td className="p-2">
+                          {new Date(click.clicked_at).toLocaleString()}
+                        </td>
+                        <td className="p-2">
+                          {click.city && click.country 
+                            ? `${click.city}, ${click.country}`
+                            : 'Location not available'}
+                        </td>
+                        <td className="p-2">
+                          {click.user_agent?.split('/')[0] || 'Unknown'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
