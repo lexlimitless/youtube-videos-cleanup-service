@@ -1,11 +1,22 @@
-import { supabase } from '../../../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+// Create a public Supabase client with anon key
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL!,
+  process.env.VITE_SUPABASE_ANON_KEY!,
+  {
+    auth: {
+      persistSession: false // Don't persist the session
+    }
+  }
+);
 
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const redirectId = url.pathname.split('/').pop();
 
-    // Get QR code details
+    // Get QR code details using the public client
     const { data: qrCode, error: qrError } = await supabase
       .from('qr_codes')
       .select('id, original_url')
@@ -13,10 +24,11 @@ export async function GET(request: Request) {
       .single();
 
     if (qrError || !qrCode) {
+      console.error('QR code lookup error:', qrError);
       return new Response('QR code not found', { status: 404 });
     }
 
-    // Record the click
+    // Record the click using the public client
     const { error: clickError } = await supabase
       .from('qr_code_clicks')
       .insert([
@@ -29,6 +41,7 @@ export async function GET(request: Request) {
       ]);
 
     if (clickError) {
+      // Log the error but don't fail the redirect
       console.error('Error recording click:', clickError);
     }
 

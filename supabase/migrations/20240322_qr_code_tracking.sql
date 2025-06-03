@@ -65,10 +65,12 @@ EXECUTE FUNCTION increment_click_count();
 -- Enable Row Level Security for clicks table
 ALTER TABLE qr_code_clicks ENABLE ROW LEVEL SECURITY;
 
--- Drop existing policy if it exists
+-- Drop existing policies if they exist
 DROP POLICY IF EXISTS "Users can view their own QR code clicks" ON qr_code_clicks;
+DROP POLICY IF EXISTS "Public can insert clicks" ON qr_code_clicks;
+DROP POLICY IF EXISTS "Public can read QR codes for redirect" ON qr_codes;
 
--- Create policy for clicks table
+-- Create policies for clicks table
 CREATE POLICY "Users can view their own QR code clicks"
 ON qr_code_clicks
 FOR SELECT
@@ -78,4 +80,16 @@ USING (
         WHERE qr_codes.id = qr_code_clicks.qr_code_id
         AND qr_codes.clerk_user_id = auth.uid()::text
     )
-); 
+);
+
+-- Allow public insertion of clicks
+CREATE POLICY "Public can insert clicks"
+ON qr_code_clicks
+FOR INSERT
+WITH CHECK (true);
+
+-- Allow public to read QR codes for redirect
+CREATE POLICY "Public can read QR codes for redirect"
+ON qr_codes
+FOR SELECT
+USING (true); 
