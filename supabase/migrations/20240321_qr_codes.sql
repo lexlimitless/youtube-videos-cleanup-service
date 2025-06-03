@@ -1,9 +1,10 @@
--- Create QR codes table
+-- Create QR codes table if it doesn't exist
 CREATE TABLE IF NOT EXISTS qr_codes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   clerk_user_id TEXT NOT NULL,
   name TEXT NOT NULL,
-  url TEXT NOT NULL,
+  url TEXT NOT NULL DEFAULT '',
+  original_url TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -16,6 +17,7 @@ DROP POLICY IF EXISTS "Users can create their own QR codes" ON qr_codes;
 DROP POLICY IF EXISTS "Users can view their own QR codes" ON qr_codes;
 DROP POLICY IF EXISTS "Users can update their own QR codes" ON qr_codes;
 DROP POLICY IF EXISTS "Users can delete their own QR codes" ON qr_codes;
+DROP POLICY IF EXISTS "Enable all actions for users based on clerk_user_id" ON qr_codes;
 
 -- Create simplified policies that don't rely on session variables
 CREATE POLICY "Enable all actions for users based on clerk_user_id"

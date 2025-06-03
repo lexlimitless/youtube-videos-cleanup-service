@@ -104,15 +104,31 @@ const Dashboard = () => {
         if (error) throw error;
         toast.success('QR code updated successfully');
       } else {
-        const { error } = await supabase
+        // For new QR codes, first create with temporary URL
+        const { data: newQRCode, error: insertError } = await supabase
           .from('qr_codes')
           .insert([{
             name,
             original_url: url,
+            url: url, // Temporary URL, will be updated after we get the ID
             clerk_user_id: user.id
-          }]);
+          }])
+          .select()
+          .single();
 
-        if (error) throw error;
+        if (insertError) throw insertError;
+        if (!newQRCode) throw new Error('Failed to create QR code');
+
+        // Update with the redirect URL
+        const { error: updateError } = await supabase
+          .from('qr_codes')
+          .update({
+            url: `${window.location.origin}/redirect/${newQRCode.redirect_id}`
+          })
+          .eq('id', newQRCode.id)
+          .eq('clerk_user_id', user.id);
+
+        if (updateError) throw updateError;
         toast.success('QR code created successfully');
       }
 
