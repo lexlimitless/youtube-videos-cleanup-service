@@ -1,22 +1,32 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Create a public Supabase client with anon key
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL!,
-  process.env.VITE_SUPABASE_ANON_KEY!,
-  {
-    auth: {
-      persistSession: false // Don't persist the session
-    }
-  }
-);
+export const config = {
+  runtime: 'edge'
+};
 
-export async function GET(request: Request) {
+export default async function handler(request: Request) {
+  // Create a public Supabase client
+  const supabase = createClient(
+    process.env.VITE_SUPABASE_URL!,
+    process.env.VITE_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
+      }
+    }
+  );
+
   try {
     const url = new URL(request.url);
-    const redirectId = url.pathname.split('/').pop();
+    const redirectId = url.pathname.split('/redirect/')[1];
 
-    // Get QR code details using the public client
+    if (!redirectId) {
+      return new Response('Invalid redirect ID', { status: 400 });
+    }
+
+    // Get QR code details
     const { data: qrCode, error: qrError } = await supabase
       .from('qr_codes')
       .select('id, original_url')
@@ -28,24 +38,23 @@ export async function GET(request: Request) {
       return new Response('QR code not found', { status: 404 });
     }
 
-    // Record the click using the public client
-    const { error: clickError } = await supabase
-      .from('qr_code_clicks')
-      .insert([
-        {
-          qr_code_id: qrCode.id,
-          ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
-          user_agent: request.headers.get('user-agent'),
-          // Note: country and city would typically come from an IP geolocation service
-        }
-      ]);
-
-    if (clickError) {
-      // Log the error but don't fail the redirect
-      console.error('Error recording click:', clickError);
+    // Fire and forget click tracking
+    try {
+      await supabase
+        .from('qr_code_clicks')
+        .insert([
+          {
+            qr_code_id: qrCode.id,
+            ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
+            user_agent: request.headers.get('user-agent'),
+          }
+        ]);
+    } catch (error) {
+      // Silently handle tracking errors
+      console.error('Error recording click:', error);
     }
 
-    // Redirect to the original URL
+    // Immediate redirect
     return new Response(null, {
       status: 302,
       headers: {

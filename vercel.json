@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/redirect/:id",
+      "destination": "/api/redirect/:id"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
