@@ -6,6 +6,14 @@ import { useUser, useClerk } from '@clerk/clerk-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
+// Debug logging
+console.log('Environment Variables:', {
+  supabaseUrl: import.meta.env.VITE_SUPABASE_URL ? 'Present' : 'Missing',
+  supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY ? 'Present' : 'Missing'
+});
+
+console.log('Supabase Client:', supabase);
+
 interface QRCode {
   id: string;
   name: string;
@@ -53,11 +61,23 @@ const Dashboard = () => {
         .eq('clerk_user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Database error:', error.message);
+        throw error;
+      }
+
       setQrCodes(data || []);
     } catch (error: any) {
-      toast.error('Error fetching QR codes');
-      console.error('Error:', error);
+      let errorMessage = 'Error fetching QR codes';
+      
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        errorMessage = 'Unable to connect to the database. Please check your internet connection.';
+      } else if (error.message) {
+        errorMessage = `Error: ${error.message}`;
+      }
+      
+      toast.error(errorMessage);
+      console.error('Error fetching QR codes:', error);
     }
   };
 
