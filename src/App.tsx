@@ -1,6 +1,8 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ClerkProvider, SignIn, SignUp, SignedIn, SignedOut } from '@clerk/clerk-react';
+import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
+import TrackableLinks from './pages/TrackableLinks';
 
 // Debug environment variables
 console.log('Environment variables:', {
@@ -19,7 +21,7 @@ const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 // The main App component serves as the root of our application
 // It renders the QRCodeGenerator component within a full-height container
 // with a light beige background color (#fbf6f0)
-function App() {
+export default function App() {
   return (
     <ClerkProvider publishableKey={clerkPubKey}>
       <Router>
@@ -54,17 +56,22 @@ function App() {
             }
           />
           <Route
-            path="/dashboard"
+            path="/"
             element={
               <SignedIn>
-                <Dashboard />
+                <Layout />
               </SignedIn>
             }
-          />
+          >
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="qr-codes" element={<div>QR Codes</div>} />
+            <Route path="links" element={<TrackableLinks />} />
+            <Route path="attribution" element={<div>Attribution Settings</div>} />
+            <Route path="integrations" element={<div>Integrations</div>} />
+            <Route path="settings" element={<div>Account Settings</div>} />
+          </Route>
         </Routes>
       </Router>
     </ClerkProvider>
   );
 }
-
-export default App;

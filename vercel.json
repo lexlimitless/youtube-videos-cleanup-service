@@ -9,7 +9,8 @@
       "destination": "/index.html"
     }
   ],
-  "buildCommand": "npm run build",
+  "buildCommand": "yarn build",
+  "installCommand": "yarn install",
   "outputDirectory": "dist",
   "framework": "vite"
 } 

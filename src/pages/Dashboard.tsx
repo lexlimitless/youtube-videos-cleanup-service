@@ -5,6 +5,38 @@ import { useNavigate } from 'react-router-dom';
 import { useUser, useClerk } from '@clerk/clerk-react';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import {
+  Card,
+  Title,
+  Text,
+  Tab,
+  TabList,
+  TabGroup,
+  TabPanel,
+  TabPanels,
+  LineChart,
+  Select,
+  SelectItem,
+  Table,
+  TableHead,
+  TableHeaderCell,
+  TableBody,
+  TableRow,
+  TableCell,
+  Badge,
+  DateRangePicker,
+  DateRangePickerValue,
+} from '@tremor/react';
+import { format } from 'date-fns';
+import { generateChartData, tableData, calculateMetrics } from '../data/dummyData';
+import { AreaChart } from '@tremor/react';
+import { 
+  Metric, 
+  Platform, 
+  SortField, 
+  SortDirection,
+  ContentItem 
+} from '../types/dashboard';
 
 // Debug logging
 console.log('Environment Variables:', {
@@ -34,6 +66,9 @@ interface QRCodeClick {
   city?: string;
 }
 
+const metrics: Metric[] = ['Revenue', 'Clicks', 'Calls', 'Sales'];
+const platforms: Platform[] = ['All', 'YouTube', 'Instagram'];
+
 const Dashboard = () => {
   const [qrCodes, setQrCodes] = useState<QRCode[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -46,6 +81,14 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useUser();
   const { signOut } = useClerk();
+  const [selectedMetric, setSelectedMetric] = useState<Metric>("Revenue");
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform>("All");
+  const [dateRange, setDateRange] = useState<DateRangePickerValue>({
+    from: new Date(2025, 4, 1),
+    to: new Date(2025, 5, 30),
+  });
+  const [sortField, setSortField] = useState<SortField>('clicks');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   useEffect(() => {
     fetchQRCodes();
@@ -241,205 +284,371 @@ const Dashboard = () => {
     }
   };
 
+  const chartData = generateChartData();
+  const summaryMetrics = calculateMetrics();
+
+  // Filter and sort table data
+  const filteredTableData = tableData
+    .filter(item => selectedPlatform === 'All' || item.platform === selectedPlatform)
+    .sort((a: ContentItem, b: ContentItem) => {
+      const aValue = a[sortField];
+      const bValue = b[sortField];
+      return sortDirection === 'desc' ? 
+        (Number(bValue) - Number(aValue)) : 
+        (Number(aValue) - Number(bValue));
+    });
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#fbf6f0] p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-[#15342b]">QR Code Generator</h1>
-          <div className="flex gap-4">
-            <button
-              onClick={() => {
-                setEditingId(null);
-                setName('');
-                setUrl('');
-                setShowModal(true);
-              }}
-              className="flex items-center gap-2 bg-[#15342b] text-white px-4 py-2 rounded-md hover:bg-opacity-90 transition-colors"
-            >
-              <Plus size={20} /> New QR Code
-            </button>
-            <button
-              onClick={handleSignOut}
-              className="flex items-center gap-2 bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
-            >
-              <LogOut size={20} /> Sign Out
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {qrCodes.map((qrCode) => (
-            <div key={qrCode.id} className="bg-white p-6 rounded-lg shadow-md">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-xl font-semibold text-[#15342b]">{qrCode.name}</h3>
-                  <p className="text-sm text-gray-500">
-                    {qrCode.click_count} clicks
-                    {qrCode.last_clicked && ` • Last clicked ${new Date(qrCode.last_clicked).toLocaleDateString()}`}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => fetchQRCodeClicks(qrCode)}
-                    className="text-gray-600 hover:text-[#15342b]"
-                    title="View Statistics"
-                  >
-                    <BarChart2 size={20} />
-                  </button>
-                  <button
-                    onClick={() => handleDownload(qrCode)}
-                    className="text-gray-600 hover:text-[#15342b]"
-                    title="Download QR Code"
-                  >
-                    <Download size={20} />
-                  </button>
-                  <button
-                    onClick={() => handleEdit(qrCode)}
-                    className="text-gray-600 hover:text-[#15342b]"
-                    title="Edit QR Code"
-                  >
-                    <Pencil size={20} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(qrCode.id)}
-                    className="text-gray-600 hover:text-red-600"
-                    title="Delete QR Code"
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                </div>
-              </div>
-              <div className="flex justify-center mb-4">
-                <div id={`qr-${qrCode.id}`}>
-                  <QRCodeSVG 
-                    value={`${window.location.origin}/redirect/${qrCode.redirect_id}`}
-                    size={200}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-700">Original URL:</p>
-                <a
-                  href={qrCode.original_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-gray-600 hover:text-[#15342b] break-all"
-                >
-                  {qrCode.original_url}
-                </a>
-                <p className="text-sm font-medium text-gray-700 mt-2">Tracking URL:</p>
-                <p className="text-sm text-gray-600 break-all">
-                  {`${window.location.origin}/redirect/${qrCode.redirect_id}`}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h2 className="text-2xl font-bold text-[#15342b] mb-4">
-                {editingId ? 'Edit QR Code' : 'Create New QR Code'}
-              </h2>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Name</label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#15342b] focus:ring focus:ring-[#15342b] focus:ring-opacity-50"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">URL</label>
-                  <input
-                    type="url"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#15342b] focus:ring focus:ring-[#15342b] focus:ring-opacity-50"
-                    required
-                  />
-                </div>
-                <div className="flex gap-4">
-                  <button
-                    type="submit"
-                    className="flex-1 bg-[#15342b] text-white py-2 px-4 rounded-md hover:bg-opacity-90 transition-colors"
-                  >
-                    {editingId ? 'Update' : 'Create'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {showStatsModal && selectedQRCode && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold text-[#15342b]">
-                  Statistics for {selectedQRCode.name}
-                </h2>
-                <button
-                  onClick={() => setShowStatsModal(false)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  ×
-                </button>
-              </div>
-              
-              <div className="mb-6">
-                <p className="text-lg font-semibold">Total Clicks: {selectedQRCode.click_count}</p>
-                {selectedQRCode.last_clicked && (
-                  <p className="text-gray-600">
-                    Last clicked: {new Date(selectedQRCode.last_clicked).toLocaleString()}
-                  </p>
-                )}
-              </div>
-
-              <div className="max-h-96 overflow-y-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left p-2">Date</th>
-                      <th className="text-left p-2">Location</th>
-                      <th className="text-left p-2">Device</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {clicks.map((click, index) => (
-                      <tr key={index} className="border-b">
-                        <td className="p-2">
-                          {new Date(click.clicked_at).toLocaleString()}
-                        </td>
-                        <td className="p-2">
-                          {click.city && click.country 
-                            ? `${click.city}, ${click.country}`
-                            : 'Location not available'}
-                        </td>
-                        <td className="p-2">
-                          {click.user_agent?.split('/')[0] || 'Unknown'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+    <main className="p-4 md:p-10 mx-auto max-w-7xl bg-gray-50/30">
+      <div className="flex items-center justify-between mb-8">
+        <Title className="text-gray-800 font-light text-2xl">Analytics Dashboard</Title>
+        <DateRangePicker
+          className="max-w-md mx-auto"
+          value={dateRange}
+          onValueChange={setDateRange}
+          selectPlaceholder="Select dates"
+        />
       </div>
-    </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+        {summaryMetrics.map((item) => (
+          <Card 
+            key={item.title} 
+            className="bg-white shadow-sm hover:shadow-md transition-shadow duration-200 rounded-xl border border-gray-100"
+          >
+            <div className="flex items-center justify-between">
+              <Text className="text-gray-600">{item.title}</Text>
+              <span className="text-2xl opacity-70">{item.icon}</span>
+            </div>
+            <Title className="mt-2 text-gray-800">{item.value}</Title>
+            <Text className={`text-sm ${item.change.startsWith('+') ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {item.change}
+            </Text>
+          </Card>
+        ))}
+      </div>
+
+      {/* Chart */}
+      <Card className="mb-8 bg-white shadow-sm hover:shadow-md transition-shadow duration-200 rounded-xl border border-gray-100">
+        <div className="flex items-center justify-between mb-6">
+          <Title className="text-gray-800 font-light">Performance Trends</Title>
+          <TabGroup>
+            <TabList variant="solid" className="bg-gray-100/80">
+              {metrics.map((metric) => (
+                <Tab 
+                  key={metric} 
+                  onClick={() => setSelectedMetric(metric)}
+                  className="text-sm data-[state=active]:bg-white"
+                >
+                  {metric}
+                </Tab>
+              ))}
+            </TabList>
+          </TabGroup>
+        </div>
+        <AreaChart
+          className="h-72 mt-4"
+          data={chartData}
+          index="date"
+          categories={[selectedMetric]}
+          colors={["slate"]}
+          showLegend={false}
+          valueFormatter={(value) => 
+            selectedMetric === 'Revenue' 
+              ? `$${value.toLocaleString()}` 
+              : value.toLocaleString()
+          }
+        />
+      </Card>
+
+      {/* Table */}
+      <Card className="bg-white shadow-sm hover:shadow-md transition-shadow duration-200 rounded-xl border border-gray-100">
+        <div className="flex items-center justify-between mb-6">
+          <Title className="text-gray-800 font-light">Content Performance</Title>
+          <Select 
+            value={selectedPlatform} 
+            onValueChange={(value: string) => setSelectedPlatform(value as Platform)}
+            className="w-40"
+          >
+            {platforms.map((platform) => (
+              <SelectItem key={platform} value={platform}>
+                {platform}
+              </SelectItem>
+            ))}
+          </Select>
+        </div>
+        <Table>
+          <TableHead>
+            <TableRow className="border-gray-100">
+              <TableHeaderCell className="text-gray-600">Title</TableHeaderCell>
+              <TableHeaderCell className="text-gray-600">Platform</TableHeaderCell>
+              <TableHeaderCell 
+                className="text-gray-600 cursor-pointer hover:text-gray-800 transition-colors"
+                onClick={() => handleSort('clicks')}
+              >
+                Clicks {sortField === 'clicks' && (
+                  <span className="text-gray-400">{sortDirection === 'desc' ? '↓' : '↑'}</span>
+                )}
+              </TableHeaderCell>
+              <TableHeaderCell 
+                className="text-gray-600 cursor-pointer hover:text-gray-800 transition-colors"
+                onClick={() => handleSort('calls')}
+              >
+                Calls {sortField === 'calls' && (
+                  <span className="text-gray-400">{sortDirection === 'desc' ? '↓' : '↑'}</span>
+                )}
+              </TableHeaderCell>
+              <TableHeaderCell 
+                className="text-gray-600 cursor-pointer hover:text-gray-800 transition-colors"
+                onClick={() => handleSort('sales')}
+              >
+                Sales {sortField === 'sales' && (
+                  <span className="text-gray-400">{sortDirection === 'desc' ? '↓' : '↑'}</span>
+                )}
+              </TableHeaderCell>
+              <TableHeaderCell 
+                className="text-gray-600 cursor-pointer hover:text-gray-800 transition-colors"
+                onClick={() => handleSort('revenue')}
+              >
+                Revenue {sortField === 'revenue' && (
+                  <span className="text-gray-400">{sortDirection === 'desc' ? '↓' : '↑'}</span>
+                )}
+              </TableHeaderCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filteredTableData.map((item) => (
+              <TableRow key={item.tag} className="border-gray-50 hover:bg-gray-50/50">
+                <TableCell>
+                  <Text className="font-medium text-gray-700">{item.title}</Text>
+                  <Text className="text-xs text-gray-400">{item.tag}</Text>
+                </TableCell>
+                <TableCell>
+                  <Badge 
+                    color={item.platform === 'YouTube' ? 'rose' : 'blue'}
+                    className="bg-opacity-10 text-opacity-90"
+                  >
+                    {item.platform}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-gray-600">{item.clicks.toLocaleString()}</TableCell>
+                <TableCell className="text-gray-600">{item.calls.toLocaleString()}</TableCell>
+                <TableCell className="text-gray-600">{item.sales.toLocaleString()}</TableCell>
+                <TableCell className="text-gray-600">${item.revenue.toLocaleString()}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Card>
+
+      <div className="min-h-screen bg-[#fbf6f0] p-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex justify-between items-center mb-8">
+            <div className="flex gap-4">
+              <button
+                onClick={() => {
+                  setEditingId(null);
+                  setName('');
+                  setUrl('');
+                  setShowModal(true);
+                }}
+                className="flex items-center gap-2 bg-[#15342b] text-white px-4 py-2 rounded-md hover:bg-opacity-90 transition-colors"
+              >
+                <Plus size={20} /> New QR Code
+              </button>
+              <button
+                onClick={handleSignOut}
+                className="flex items-center gap-2 bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
+              >
+                <LogOut size={20} /> Sign Out
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {qrCodes.map((qrCode) => (
+              <div key={qrCode.id} className="bg-white p-6 rounded-lg shadow-md">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-xl font-semibold text-[#15342b]">{qrCode.name}</h3>
+                    <p className="text-sm text-gray-500">
+                      {qrCode.click_count} clicks
+                      {qrCode.last_clicked && ` • Last clicked ${new Date(qrCode.last_clicked).toLocaleDateString()}`}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => fetchQRCodeClicks(qrCode)}
+                      className="text-gray-600 hover:text-[#15342b]"
+                      title="View Statistics"
+                    >
+                      <BarChart2 size={20} />
+                    </button>
+                    <button
+                      onClick={() => handleDownload(qrCode)}
+                      className="text-gray-600 hover:text-[#15342b]"
+                      title="Download QR Code"
+                    >
+                      <Download size={20} />
+                    </button>
+                    <button
+                      onClick={() => handleEdit(qrCode)}
+                      className="text-gray-600 hover:text-[#15342b]"
+                      title="Edit QR Code"
+                    >
+                      <Pencil size={20} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(qrCode.id)}
+                      className="text-gray-600 hover:text-red-600"
+                      title="Delete QR Code"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex justify-center mb-4">
+                  <div id={`qr-${qrCode.id}`}>
+                    <QRCodeSVG 
+                      value={`${window.location.origin}/redirect/${qrCode.redirect_id}`}
+                      size={200}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-gray-700">Original URL:</p>
+                  <a
+                    href={qrCode.original_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-gray-600 hover:text-[#15342b] break-all"
+                  >
+                    {qrCode.original_url}
+                  </a>
+                  <p className="text-sm font-medium text-gray-700 mt-2">Tracking URL:</p>
+                  <p className="text-sm text-gray-600 break-all">
+                    {`${window.location.origin}/redirect/${qrCode.redirect_id}`}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {showModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg p-6 w-full max-w-md">
+                <h2 className="text-2xl font-bold text-[#15342b] mb-4">
+                  {editingId ? 'Edit QR Code' : 'Create New QR Code'}
+                </h2>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Name</label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#15342b] focus:ring focus:ring-[#15342b] focus:ring-opacity-50"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">URL</label>
+                    <input
+                      type="url"
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#15342b] focus:ring focus:ring-[#15342b] focus:ring-opacity-50"
+                      required
+                    />
+                  </div>
+                  <div className="flex gap-4">
+                    <button
+                      type="submit"
+                      className="flex-1 bg-[#15342b] text-white py-2 px-4 rounded-md hover:bg-opacity-90 transition-colors"
+                    >
+                      {editingId ? 'Update' : 'Create'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowModal(false)}
+                      className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {showStatsModal && selectedQRCode && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-2xl font-bold text-[#15342b]">
+                    Statistics for {selectedQRCode.name}
+                  </h2>
+                  <button
+                    onClick={() => setShowStatsModal(false)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ×
+                  </button>
+                </div>
+                
+                <div className="mb-6">
+                  <p className="text-lg font-semibold">Total Clicks: {selectedQRCode.click_count}</p>
+                  {selectedQRCode.last_clicked && (
+                    <p className="text-gray-600">
+                      Last clicked: {new Date(selectedQRCode.last_clicked).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+
+                <div className="max-h-96 overflow-y-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left p-2">Date</th>
+                        <th className="text-left p-2">Location</th>
+                        <th className="text-left p-2">Device</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {clicks.map((click, index) => (
+                        <tr key={index} className="border-b">
+                          <td className="p-2">
+                            {new Date(click.clicked_at).toLocaleString()}
+                          </td>
+                          <td className="p-2">
+                            {click.city && click.country 
+                              ? `${click.city}, ${click.country}`
+                              : 'Location not available'}
+                          </td>
+                          <td className="p-2">
+                            {click.user_agent?.split('/')[0] || 'Unknown'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </main>
   );
 };
 
