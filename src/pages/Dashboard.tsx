@@ -1,655 +1,219 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
-import { Plus, Pencil, Trash2, LogOut, Download, BarChart2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { useUser, useClerk } from '@clerk/clerk-react';
-import { supabase } from '../lib/supabase';
-import toast from 'react-hot-toast';
+import React, { useMemo, useState } from 'react';
+import { Title } from '@tremor/react';
+import { format, subMonths } from 'date-fns';
 import {
-  Card,
-  Title,
-  Text,
-  Tab,
-  TabList,
-  TabGroup,
-  TabPanel,
-  TabPanels,
-  LineChart,
-  Select,
-  SelectItem,
-  Table,
-  TableHead,
-  TableHeaderCell,
-  TableBody,
-  TableRow,
-  TableCell,
-  Badge,
-  DateRangePicker,
-  DateRangePickerValue,
-} from '@tremor/react';
-import { format } from 'date-fns';
-import { generateChartData, tableData, calculateMetrics } from '../data/dummyData';
-import { AreaChart } from '@tremor/react';
-import { 
-  Metric, 
-  Platform, 
-  SortField, 
-  SortDirection,
-  ContentItem 
-} from '../types/dashboard';
+  AreaChart as ReAreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid
+} from 'recharts';
+import { Menu } from '@headlessui/react';
+import { ChevronDown } from 'lucide-react';
 
-// Debug logging
-console.log('Environment Variables:', {
-  supabaseUrl: import.meta.env.VITE_SUPABASE_URL ? 'Present' : 'Missing',
-  supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY ? 'Present' : 'Missing'
+// Generate dummy aggregate data for the last 12 months
+const months = Array.from({ length: 12 }, (_, i) => {
+  const date = subMonths(new Date(), 11 - i);
+  return format(date, 'MMM yyyy');
 });
 
-console.log('Supabase Client:', supabase);
+const dummyData = months.map((month, i) => {
+  const revenue = 5000 + i * 1200 + Math.floor(Math.random() * 800);
+  const calls = 20 + Math.floor(Math.random() * 10);
+  const sales = 10 + Math.floor(Math.random() * 8);
+  return {
+    month,
+    revenue,
+    calls,
+    sales,
+  };
+});
 
-interface QRCode {
-  id: string;
-  name: string;
-  url: string;
-  original_url: string;
-  redirect_id: string;
-  click_count: number;
-  last_clicked: string;
-  created_at: string;
-  clerk_user_id: string;
-}
+// Calculate revenue growth %
+const dataWithGrowth = dummyData.map((row, i, arr) => {
+  if (i === 0) return { ...row, growth: null };
+  const prev = arr[i - 1].revenue;
+  const growth = prev ? ((row.revenue - prev) / prev) * 100 : null;
+  return { ...row, growth };
+});
 
-interface QRCodeClick {
-  clicked_at: string;
-  ip_address: string;
-  user_agent: string;
-  country?: string;
-  city?: string;
-}
-
-const metrics: Metric[] = ['Revenue', 'Clicks', 'Calls', 'Sales'];
-const platforms: Platform[] = ['All', 'YouTube', 'Instagram'];
-
-const Dashboard = () => {
-  const [qrCodes, setQrCodes] = useState<QRCode[]>([]);
-  const [showModal, setShowModal] = useState(false);
-  const [showStatsModal, setShowStatsModal] = useState(false);
-  const [selectedQRCode, setSelectedQRCode] = useState<QRCode | null>(null);
-  const [clicks, setClicks] = useState<QRCodeClick[]>([]);
-  const [name, setName] = useState('');
-  const [url, setUrl] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const navigate = useNavigate();
-  const { user } = useUser();
-  const { signOut } = useClerk();
-  const [selectedMetric, setSelectedMetric] = useState<Metric>("Revenue");
-  const [selectedPlatform, setSelectedPlatform] = useState<Platform>("All");
-  const [dateRange, setDateRange] = useState<DateRangePickerValue>({
-    from: new Date(2025, 4, 1),
-    to: new Date(2025, 5, 30),
+export default function Dashboard() {
+  const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
+    from: subMonths(new Date(), 2),
+    to: new Date(),
   });
-  const [sortField, setSortField] = useState<SortField>('clicks');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [showCalendar, setShowCalendar] = useState(false);
+  const quickRanges = [
+    { label: 'LAST 30 DAYS', days: 30 },
+    { label: 'LAST 90 DAYS', days: 90 },
+    { label: 'LAST 365 DAYS', days: 365 },
+    { label: 'YTD', ytd: true },
+    { label: 'ALL', all: true },
+  ];
+  function formatRange(from: Date, to: Date) {
+    return `${format(from, 'yyyy-MM-dd')} to ${format(to, 'yyyy-MM-dd')}`;
+  }
 
-  useEffect(() => {
-    fetchQRCodes();
-  }, []);
+  // Chart data for AreaChart
+  const chartData = useMemo(() =>
+    dataWithGrowth.map(row => ({
+      month: row.month,
+      Revenue: row.revenue,
+    })),
+    []
+  );
 
-  const fetchQRCodes = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('qr_codes')
-        .select('*')
-        .eq('clerk_user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Database error:', error.message);
-        throw error;
-      }
-
-      setQrCodes(data || []);
-    } catch (error: any) {
-      let errorMessage = 'Error fetching QR codes';
-      
-      if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        errorMessage = 'Unable to connect to the database. Please check your internet connection.';
-      } else if (error.message) {
-        errorMessage = `Error: ${error.message}`;
-      }
-      
-      toast.error(errorMessage);
-      console.error('Error fetching QR codes:', error);
-    }
-  };
-
-  const fetchQRCodeClicks = async (qrCode: QRCode) => {
-    try {
-      const { data, error } = await supabase
-        .from('qr_code_clicks')
-        .select('*')
-        .eq('qr_code_id', qrCode.id)
-        .order('clicked_at', { ascending: false });
-
-      if (error) throw error;
-      setClicks(data || []);
-      setSelectedQRCode(qrCode);
-      setShowStatsModal(true);
-    } catch (error: any) {
-      toast.error('Error fetching click statistics');
-      console.error('Error:', error);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-
-    try {
-      if (editingId) {
-        // Get the current QR code being edited
-        const currentQRCode = qrCodes.find(code => code.id === editingId);
-        if (!currentQRCode) {
-          throw new Error('QR code not found');
-        }
-
-        const { error } = await supabase
-          .from('qr_codes')
-          .update({ 
-            name,
-            original_url: url,
-            url: `${window.location.origin}/redirect/${currentQRCode.redirect_id}`
-          })
-          .eq('id', editingId)
-          .eq('clerk_user_id', user.id);
-
-        if (error) throw error;
-        toast.success('QR code updated successfully');
-      } else {
-        // For new QR codes, first create with temporary URL
-        const { data: newQRCode, error: insertError } = await supabase
-          .from('qr_codes')
-          .insert([{
-            name,
-            original_url: url,
-            url: url, // Temporary URL, will be updated after we get the ID
-            clerk_user_id: user.id
-          }])
-          .select()
-          .single();
-
-        if (insertError) throw insertError;
-        if (!newQRCode) throw new Error('Failed to create QR code');
-
-        // Update with the redirect URL
-        const { error: updateError } = await supabase
-          .from('qr_codes')
-          .update({
-            url: `${window.location.origin}/redirect/${newQRCode.redirect_id}`
-          })
-          .eq('id', newQRCode.id)
-          .eq('clerk_user_id', user.id);
-
-        if (updateError) throw updateError;
-        toast.success('QR code created successfully');
-      }
-
-      setShowModal(false);
-      setName('');
-      setUrl('');
-      setEditingId(null);
-      fetchQRCodes();
-    } catch (error: any) {
-      toast.error(error.message);
-      console.error('Error:', error);
-    }
-  };
-
-  const handleEdit = (qrCode: QRCode) => {
-    setEditingId(qrCode.id);
-    setName(qrCode.name);
-    setUrl(qrCode.url);
-    setShowModal(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!user) return;
-
-    try {
-      const { error } = await supabase
-        .from('qr_codes')
-        .delete()
-        .eq('id', id)
-        .eq('clerk_user_id', user.id);
-
-      if (error) throw error;
-      toast.success('QR code deleted successfully');
-      fetchQRCodes();
-    } catch (error: any) {
-      toast.error(error.message);
-      console.error('Error:', error);
-    }
-  };
-
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/sign-in');
-  };
-
-  const handleDownload = async (qrCode: QRCode) => {
-    try {
-      // Create a temporary container for the SVG
-      const container = document.createElement('div');
-      container.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200">
-        ${document.getElementById(`qr-${qrCode.id}`)?.innerHTML || ''}
-      </svg>`;
-      
-      const svgElement = container.firstChild as SVGElement;
-      const canvas = document.createElement('canvas');
-      canvas.width = 200;
-      canvas.height = 200;
-      
-      // Convert SVG to data URL
-      const svgData = new XMLSerializer().serializeToString(svgElement);
-      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-      const svgUrl = URL.createObjectURL(svgBlob);
-      
-      // Create image from SVG
-      const img = new Image();
-      img.src = svgUrl;
-      
-      await new Promise((resolve) => {
-        img.onload = () => {
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0);
-          URL.revokeObjectURL(svgUrl);
-          resolve(null);
-        };
-      });
-      
-      // Convert canvas to PNG and download
-      const pngUrl = canvas.toDataURL('image/png');
-      const downloadLink = document.createElement('a');
-      downloadLink.href = pngUrl;
-      downloadLink.download = `${qrCode.name}-qr-code.png`;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
-      
-      toast.success('QR code downloaded successfully');
-    } catch (error) {
-      console.error('Error downloading QR code:', error);
-      toast.error('Failed to download QR code');
-    }
-  };
-
-  const chartData = generateChartData();
-  const summaryMetrics = calculateMetrics();
-
-  // Filter and sort table data
-  const filteredTableData = tableData
-    .filter(item => selectedPlatform === 'All' || item.platform === selectedPlatform)
-    .sort((a: ContentItem, b: ContentItem) => {
-      const aValue = a[sortField];
-      const bValue = b[sortField];
-      return sortDirection === 'desc' ? 
-        (Number(bValue) - Number(aValue)) : 
-        (Number(aValue) - Number(bValue));
-    });
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc');
-    } else {
-      setSortField(field);
-      setSortDirection('desc');
-    }
-  };
+  // Prepare transposed data for the table
+  const revenueRow = dataWithGrowth.map(row => row.revenue);
+  const growthRow = dataWithGrowth.map(row => row.growth == null ? null : row.growth);
+  const callsRow = dataWithGrowth.map(row => row.calls);
+  const salesRow = dataWithGrowth.map(row => row.sales);
 
   return (
-    <main className="p-4 md:p-10 mx-auto max-w-7xl bg-gray-50/30">
-      <div className="flex items-center justify-between mb-8">
-        <Title className="text-gray-800 font-light text-2xl">Analytics Dashboard</Title>
-        <DateRangePicker
-          className="max-w-md mx-auto"
-          value={dateRange}
-          onValueChange={setDateRange}
-          selectPlaceholder="Select dates"
-        />
+    <main className="flex flex-col w-full max-w-full px-0 bg-gray-50 font-sans">
+      <div className="mb-8 flex items-center justify-between w-full max-w-full">
+        <Title className="text-2xl font-semibold text-gray-900 mb-2">Business Performance</Title>
+        {/* Date Range Selector */}
+        <Menu as="div" className="relative inline-block text-left">
+          <div>
+            <Menu.Button
+              className="flex items-center border border-gray-200 rounded-md px-4 py-2 bg-white text-gray-900 font-semibold text-base shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+              onClick={() => setShowCalendar((v) => !v)}
+            >
+              {formatRange(dateRange.from, dateRange.to)}
+              <ChevronDown className="ml-2 w-4 h-4" />
+            </Menu.Button>
+          </div>
+          {showCalendar && (
+            <Menu.Items static className="absolute right-0 mt-2 w-[420px] rounded-xl bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-50 p-6">
+              <div className="flex flex-col gap-4">
+                <div className="flex gap-4 mb-2">
+                  {quickRanges.map((range) => (
+                    <button
+                      key={range.label}
+                      className="text-xs font-bold px-2 py-1 rounded hover:bg-gray-100 text-gray-700"
+                      onClick={() => {
+                        if (range.days) {
+                          setDateRange({ from: subMonths(new Date(), Math.floor(range.days / 30)), to: new Date() });
+                        } else if (range.ytd) {
+                          setDateRange({ from: new Date(new Date().getFullYear(), 0, 1), to: new Date() });
+                        } else if (range.all) {
+                          setDateRange({ from: new Date(2020, 0, 1), to: new Date() });
+                        }
+                        setShowCalendar(false);
+                      }}
+                    >
+                      {range.label}
+                    </button>
+                  ))}
+                </div>
+                {/* Calendar UI placeholder */}
+                <div className="flex gap-8">
+                  <div>
+                    <div className="text-center text-xs font-bold mb-2">Mar 2025</div>
+                    <div className="grid grid-cols-7 gap-1 text-xs text-gray-400 mb-1">
+                      <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+                    </div>
+                    <div className="grid grid-cols-7 gap-1 text-xs">
+                      {/* Render days for left calendar (placeholder) */}
+                      {[...Array(35)].map((_, i) => (
+                        <span key={i} className="w-6 h-6 flex items-center justify-center rounded cursor-pointer hover:bg-emerald-100">{i < 7 ? '' : i - 6}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-center text-xs font-bold mb-2">Jun 2025</div>
+                    <div className="grid grid-cols-7 gap-1 text-xs text-gray-400 mb-1">
+                      <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+                    </div>
+                    <div className="grid grid-cols-7 gap-1 text-xs">
+                      {/* Render days for right calendar (placeholder) */}
+                      {[...Array(35)].map((_, i) => (
+                        <span key={i} className="w-6 h-6 flex items-center justify-center rounded cursor-pointer hover:bg-emerald-100">{i < 7 ? '' : i - 6}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Menu.Items>
+          )}
+        </Menu>
       </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        {summaryMetrics.map((item) => (
-          <Card 
-            key={item.title} 
-            className="bg-white shadow-sm hover:shadow-md transition-shadow duration-200 rounded-xl border border-gray-100"
+      {/* Granularity selector */}
+      <div className="flex gap-2 bg-gray-100 rounded-xl px-2 py-1 mb-6 w-full max-w-full">
+        {['DAY', 'WEEK', 'MONTH', 'QUARTER', 'YEAR'].map((g) => (
+          <button
+            key={g}
+            className={`text-sm font-bold px-3 py-1 rounded ${g === 'MONTH' ? 'bg-gray-400 text-white' : 'text-gray-700 hover:bg-gray-200'}`}
           >
-            <div className="flex items-center justify-between">
-              <Text className="text-gray-600">{item.title}</Text>
-              <span className="text-2xl opacity-70">{item.icon}</span>
-            </div>
-            <Title className="mt-2 text-gray-800">{item.value}</Title>
-            <Text className={`text-sm ${item.change.startsWith('+') ? 'text-emerald-600' : 'text-rose-600'}`}>
-              {item.change}
-            </Text>
-          </Card>
+            {g}
+          </button>
         ))}
       </div>
-
-      {/* Chart */}
-      <Card className="mb-8 bg-white shadow-sm hover:shadow-md transition-shadow duration-200 rounded-xl border border-gray-100">
-        <div className="flex items-center justify-between mb-6">
-          <Title className="text-gray-800 font-light">Performance Trends</Title>
-          <TabGroup>
-            <TabList variant="solid" className="bg-gray-100/80">
-              {metrics.map((metric) => (
-                <Tab 
-                  key={metric} 
-                  onClick={() => setSelectedMetric(metric)}
-                  className="text-sm data-[state=active]:bg-white"
-                >
-                  {metric}
-                </Tab>
-              ))}
-            </TabList>
-          </TabGroup>
+      <div className="bg-white rounded-xl shadow-soft p-6 mb-8 w-full max-w-full">
+        <div className="h-72 w-full max-w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <ReAreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#077848" stopOpacity={0.7}/>
+                  <stop offset="95%" stopColor="#077848" stopOpacity={0.1}/>
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="month" tick={{ fontSize: 13, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 13, fill: '#6b7280' }} axisLine={false} tickLine={false} width={60} tickFormatter={v => `$${v}`}/>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+              <Tooltip formatter={v => `$${v.toLocaleString()}`}/>
+              <Area type="monotone" dataKey="Revenue" stroke="#077848" fillOpacity={1} fill="url(#colorRevenue)" />
+            </ReAreaChart>
+          </ResponsiveContainer>
         </div>
-        <AreaChart
-          className="h-72 mt-4"
-          data={chartData}
-          index="date"
-          categories={[selectedMetric]}
-          colors={["slate"]}
-          showLegend={false}
-          valueFormatter={(value) => 
-            selectedMetric === 'Revenue' 
-              ? `$${value.toLocaleString()}` 
-              : value.toLocaleString()
-          }
-        />
-      </Card>
-
-      {/* Table */}
-      <Card className="bg-white shadow-sm hover:shadow-md transition-shadow duration-200 rounded-xl border border-gray-100">
-        <div className="flex items-center justify-between mb-6">
-          <Title className="text-gray-800 font-light">Content Performance</Title>
-          <Select 
-            value={selectedPlatform} 
-            onValueChange={(value: string) => setSelectedPlatform(value as Platform)}
-            className="w-40"
-          >
-            {platforms.map((platform) => (
-              <SelectItem key={platform} value={platform}>
-                {platform}
-              </SelectItem>
-            ))}
-          </Select>
-        </div>
-        <Table>
-          <TableHead>
-            <TableRow className="border-gray-100">
-              <TableHeaderCell className="text-gray-600">Title</TableHeaderCell>
-              <TableHeaderCell className="text-gray-600">Platform</TableHeaderCell>
-              <TableHeaderCell 
-                className="text-gray-600 cursor-pointer hover:text-gray-800 transition-colors"
-                onClick={() => handleSort('clicks')}
-              >
-                Clicks {sortField === 'clicks' && (
-                  <span className="text-gray-400">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-                )}
-              </TableHeaderCell>
-              <TableHeaderCell 
-                className="text-gray-600 cursor-pointer hover:text-gray-800 transition-colors"
-                onClick={() => handleSort('calls')}
-              >
-                Calls {sortField === 'calls' && (
-                  <span className="text-gray-400">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-                )}
-              </TableHeaderCell>
-              <TableHeaderCell 
-                className="text-gray-600 cursor-pointer hover:text-gray-800 transition-colors"
-                onClick={() => handleSort('sales')}
-              >
-                Sales {sortField === 'sales' && (
-                  <span className="text-gray-400">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-                )}
-              </TableHeaderCell>
-              <TableHeaderCell 
-                className="text-gray-600 cursor-pointer hover:text-gray-800 transition-colors"
-                onClick={() => handleSort('revenue')}
-              >
-                Revenue {sortField === 'revenue' && (
-                  <span className="text-gray-400">{sortDirection === 'desc' ? '↓' : '↑'}</span>
-                )}
-              </TableHeaderCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredTableData.map((item) => (
-              <TableRow key={item.tag} className="border-gray-50 hover:bg-gray-50/50">
-                <TableCell>
-                  <Text className="font-medium text-gray-700">{item.title}</Text>
-                  <Text className="text-xs text-gray-400">{item.tag}</Text>
-                </TableCell>
-                <TableCell>
-                  <Badge 
-                    color={item.platform === 'YouTube' ? 'rose' : 'blue'}
-                    className="bg-opacity-10 text-opacity-90"
-                  >
-                    {item.platform}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-gray-600">{item.clicks.toLocaleString()}</TableCell>
-                <TableCell className="text-gray-600">{item.calls.toLocaleString()}</TableCell>
-                <TableCell className="text-gray-600">{item.sales.toLocaleString()}</TableCell>
-                <TableCell className="text-gray-600">${item.revenue.toLocaleString()}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
-
-      <div className="min-h-screen bg-[#fbf6f0] p-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex justify-between items-center mb-8">
-            <div className="flex gap-4">
-              <button
-                onClick={() => {
-                  setEditingId(null);
-                  setName('');
-                  setUrl('');
-                  setShowModal(true);
-                }}
-                className="flex items-center gap-2 bg-[#15342b] text-white px-4 py-2 rounded-md hover:bg-opacity-90 transition-colors"
-              >
-                <Plus size={20} /> New QR Code
-              </button>
-              <button
-                onClick={handleSignOut}
-                className="flex items-center gap-2 bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors"
-              >
-                <LogOut size={20} /> Sign Out
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {qrCodes.map((qrCode) => (
-              <div key={qrCode.id} className="bg-white p-6 rounded-lg shadow-md">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-xl font-semibold text-[#15342b]">{qrCode.name}</h3>
-                    <p className="text-sm text-gray-500">
-                      {qrCode.click_count} clicks
-                      {qrCode.last_clicked && ` • Last clicked ${new Date(qrCode.last_clicked).toLocaleDateString()}`}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => fetchQRCodeClicks(qrCode)}
-                      className="text-gray-600 hover:text-[#15342b]"
-                      title="View Statistics"
-                    >
-                      <BarChart2 size={20} />
-                    </button>
-                    <button
-                      onClick={() => handleDownload(qrCode)}
-                      className="text-gray-600 hover:text-[#15342b]"
-                      title="Download QR Code"
-                    >
-                      <Download size={20} />
-                    </button>
-                    <button
-                      onClick={() => handleEdit(qrCode)}
-                      className="text-gray-600 hover:text-[#15342b]"
-                      title="Edit QR Code"
-                    >
-                      <Pencil size={20} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(qrCode.id)}
-                      className="text-gray-600 hover:text-red-600"
-                      title="Delete QR Code"
-                    >
-                      <Trash2 size={20} />
-                    </button>
-                  </div>
-                </div>
-                <div className="flex justify-center mb-4">
-                  <div id={`qr-${qrCode.id}`}>
-                    <QRCodeSVG 
-                      value={`${window.location.origin}/redirect/${qrCode.redirect_id}`}
-                      size={200}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-gray-700">Original URL:</p>
-                  <a
-                    href={qrCode.original_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-gray-600 hover:text-[#15342b] break-all"
-                  >
-                    {qrCode.original_url}
-                  </a>
-                  <p className="text-sm font-medium text-gray-700 mt-2">Tracking URL:</p>
-                  <p className="text-sm text-gray-600 break-all">
-                    {`${window.location.origin}/redirect/${qrCode.redirect_id}`}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {showModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-lg p-6 w-full max-w-md">
-                <h2 className="text-2xl font-bold text-[#15342b] mb-4">
-                  {editingId ? 'Edit QR Code' : 'Create New QR Code'}
-                </h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Name</label>
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#15342b] focus:ring focus:ring-[#15342b] focus:ring-opacity-50"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">URL</label>
-                    <input
-                      type="url"
-                      value={url}
-                      onChange={(e) => setUrl(e.target.value)}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-[#15342b] focus:ring focus:ring-[#15342b] focus:ring-opacity-50"
-                      required
-                    />
-                  </div>
-                  <div className="flex gap-4">
-                    <button
-                      type="submit"
-                      className="flex-1 bg-[#15342b] text-white py-2 px-4 rounded-md hover:bg-opacity-90 transition-colors"
-                    >
-                      {editingId ? 'Update' : 'Create'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowModal(false)}
-                      className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {showStatsModal && selectedQRCode && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-bold text-[#15342b]">
-                    Statistics for {selectedQRCode.name}
-                  </h2>
-                  <button
-                    onClick={() => setShowStatsModal(false)}
-                    className="text-gray-500 hover:text-gray-700"
-                  >
-                    ×
-                  </button>
-                </div>
-                
-                <div className="mb-6">
-                  <p className="text-lg font-semibold">Total Clicks: {selectedQRCode.click_count}</p>
-                  {selectedQRCode.last_clicked && (
-                    <p className="text-gray-600">
-                      Last clicked: {new Date(selectedQRCode.last_clicked).toLocaleString()}
-                    </p>
-                  )}
-                </div>
-
-                <div className="max-h-96 overflow-y-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left p-2">Date</th>
-                        <th className="text-left p-2">Location</th>
-                        <th className="text-left p-2">Device</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {clicks.map((click, index) => (
-                        <tr key={index} className="border-b">
-                          <td className="p-2">
-                            {new Date(click.clicked_at).toLocaleString()}
-                          </td>
-                          <td className="p-2">
-                            {click.city && click.country 
-                              ? `${click.city}, ${click.country}`
-                              : 'Location not available'}
-                          </td>
-                          <td className="p-2">
-                            {click.user_agent?.split('/')[0] || 'Unknown'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
+      </div>
+      <div className="bg-white rounded-xl shadow-soft p-6 w-full max-w-full">
+        <Title className="text-lg font-semibold text-gray-900 mb-4">Monthly Metrics</Title>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 w-full max-w-full">
+            <thead className="bg-gray-50 sticky top-0 z-10">
+              <tr>
+                <th className="text-gray-600 font-semibold px-3 py-2 text-sm text-left whitespace-nowrap">Metric</th>
+                {months.map(month => (
+                  <th key={month} className="text-gray-600 font-semibold px-3 py-2 text-sm text-center whitespace-nowrap">{month}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="font-medium text-gray-800 px-3 py-2 text-sm whitespace-nowrap">Revenue</td>
+                {revenueRow.map((val, i) => (
+                  <td key={i} className="text-gray-900 text-center px-3 py-2 text-sm whitespace-nowrap">${val.toLocaleString()}</td>
+                ))}
+              </tr>
+              <tr>
+                <td className="font-medium text-gray-800 px-3 py-2 text-sm whitespace-nowrap">Revenue Growth %</td>
+                {growthRow.map((val, i) => (
+                  <td key={i} className={val == null ? 'text-gray-400 text-center px-3 py-2 text-sm whitespace-nowrap' : val >= 0 ? 'text-emerald-700 text-center px-3 py-2 text-sm whitespace-nowrap' : 'text-red-600 text-center px-3 py-2 text-sm whitespace-nowrap'}>
+                    {val == null ? '--' : `${val > 0 ? '+' : ''}${val.toFixed(1)}%`}
+                  </td>
+                ))}
+              </tr>
+              <tr>
+                <td className="font-medium text-gray-800 px-3 py-2 text-sm whitespace-nowrap">Total Calls Booked</td>
+                {callsRow.map((val, i) => (
+                  <td key={i} className="text-gray-700 text-center px-3 py-2 text-sm whitespace-nowrap">{val}</td>
+                ))}
+              </tr>
+              <tr>
+                <td className="font-medium text-gray-800 px-3 py-2 text-sm whitespace-nowrap">Total Sales</td>
+                {salesRow.map((val, i) => (
+                  <td key={i} className="text-gray-700 text-center px-3 py-2 text-sm whitespace-nowrap">{val}</td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </main>
   );
-};
-
-export default Dashboard;
+}

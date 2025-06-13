@@ -1,29 +1,14 @@
 import React, { useState, useMemo } from 'react';
-import {
-  Card,
-  Table,
-  TableHead,
-  TableRow,
-  TableHeaderCell,
-  TableBody,
-  TableCell,
-  Button,
-  TextInput,
-  Select,
-  SelectItem,
-  DateRangePicker,
-  DateRangePickerValue,
-  Badge,
-} from '@tremor/react';
-import { Plus, MoreHorizontal, Download } from 'lucide-react';
+import { Copy, MoreHorizontal, Download } from 'lucide-react';
 import { format, parseISO, isWithinInterval } from 'date-fns';
+import { Dialog } from '@headlessui/react';
 
-// Dummy data generator
 const platforms = ['YouTube', 'Instagram'];
 const attributionWindows = ['1 day', '7 days', '14 days'];
 const dummyLinks = Array.from({ length: 20 }, (_, i) => {
   const platform = i % 2 === 0 ? 'YouTube' : 'Instagram';
   const createdDate = new Date(2025, 5, 1 + i);
+  const short = `amg.ly/${1000 + i}`;
   return {
     id: i + 1,
     title: platform === 'YouTube' ? `YouTube Content #${i + 1}` : `Instagram Promo #${i + 1}`,
@@ -31,6 +16,7 @@ const dummyLinks = Array.from({ length: 20 }, (_, i) => {
     url: platform === 'YouTube'
       ? `https://youtube.com/watch?v=abc${100 + i}`
       : `https://linkin.bio/amazinggains${i}`,
+    shortLink: short,
     createdDate: format(createdDate, 'yyyy-MM-dd'),
     clicks: Math.floor(Math.random() * 800),
     calls: Math.floor(Math.random() * 20),
@@ -48,12 +34,13 @@ const initialDateRange = {
 
 export default function TrackableLinks() {
   const [search, setSearch] = useState('');
-  const [dateRange, setDateRange] = useState<DateRangePickerValue>(initialDateRange);
+  const [dateRange, setDateRange] = useState<{ from: Date | null; to: Date | null }>(initialDateRange);
   const [sortField, setSortField] = useState<'createdDate' | 'revenue'>('createdDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showModal, setShowModal] = useState(false);
   const [links, setLinks] = useState(dummyLinks);
   const [visibleRows, setVisibleRows] = useState(10);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   // Modal form state
   const [form, setForm] = useState({
@@ -109,6 +96,7 @@ export default function TrackableLinks() {
         title: form.title || `Untitled Link #${links.length + 1}`,
         platform: form.platform,
         url: form.url,
+        shortLink: `amg.ly/${1000 + links.length + 1}`,
         createdDate: format(new Date(), 'yyyy-MM-dd'),
         clicks: Math.floor(Math.random() * 800),
         calls: Math.floor(Math.random() * 20),
@@ -129,104 +117,126 @@ export default function TrackableLinks() {
     alert(`Download QR for: ${link.url}`);
   };
 
+  // Copy shortened link
+  const handleCopy = (link: any) => {
+    navigator.clipboard.writeText(link.shortLink);
+    setCopiedId(link.id);
+    setTimeout(() => setCopiedId(null), 1200);
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="flex flex-col w-full max-w-full px-0 min-h-screen bg-gray-50 font-sans">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 w-full max-w-full">
         <div className="flex items-center gap-3">
           <input
             type="text"
             placeholder="Search by title..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="px-4 py-2 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 text-sm w-64"
+            className="px-4 py-2 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-100 text-sm w-64"
           />
-          <DateRangePicker
-            value={dateRange}
-            onValueChange={setDateRange}
-            className="ml-2"
+          <input
+            type="date"
+            value={dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : ''}
+            onChange={e => setDateRange((r: { from: Date | null; to: Date | null }) => ({ ...r, from: e.target.value ? new Date(e.target.value) : null }))}
+            className="ml-2 px-2 py-1 rounded border border-gray-200 text-sm"
+          />
+          <span className="mx-1 text-gray-400">to</span>
+          <input
+            type="date"
+            value={dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : ''}
+            onChange={e => setDateRange((r: { from: Date | null; to: Date | null }) => ({ ...r, to: e.target.value ? new Date(e.target.value) : null }))}
+            className="px-2 py-1 rounded border border-gray-200 text-sm"
           />
         </div>
-        <Button
-          className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-md px-4 py-2 flex items-center gap-2 shadow-sm"
+        <button
+          className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-4 py-2 flex items-center gap-2 shadow-soft font-semibold"
           onClick={() => setShowModal(true)}
         >
-          <Plus size={18} /> Create Trackable Link
-        </Button>
+          + Create Trackable Link
+        </button>
       </div>
 
       {/* Table */}
-      <Card className="overflow-auto max-h-[70vh] rounded-xl shadow-sm" onScroll={handleScroll}>
-        <Table className="min-w-full">
-          <TableHead className="sticky top-0 bg-white z-10">
-            <TableRow>
-              <TableHeaderCell className="text-gray-500 font-semibold">Title/Label</TableHeaderCell>
-              <TableHeaderCell className="text-gray-500 font-semibold">Platform</TableHeaderCell>
-              <TableHeaderCell className="text-gray-500 font-semibold">Destination URL</TableHeaderCell>
-              <TableHeaderCell className="text-gray-500 font-semibold">QR Code</TableHeaderCell>
-              <TableHeaderCell
-                className="text-gray-500 font-semibold cursor-pointer"
-                onClick={() => setSortField(f => (f === 'createdDate' ? (setSortDirection(d => d === 'desc' ? 'asc' : 'desc'), 'createdDate') : (setSortDirection('desc'), 'createdDate')))}
-              >
+      <div className="overflow-auto max-h-[70vh] rounded-xl shadow-soft bg-white w-full max-w-full">
+        <table className="min-w-full divide-y divide-gray-200 w-full max-w-full">
+          <thead className="sticky top-0 bg-white z-10">
+            <tr>
+              <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">Title/Label</th>
+              <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">Platform</th>
+              <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">Shortened Link</th>
+              <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">Destination URL</th>
+              <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">QR Code</th>
+              <th className="text-gray-500 font-semibold px-2 py-1 text-xs cursor-pointer whitespace-nowrap" onClick={() => setSortField(f => (f === 'createdDate' ? (setSortDirection(d => d === 'desc' ? 'asc' : 'desc'), 'createdDate') : (setSortDirection('desc'), 'createdDate')))}>
                 Created Date {sortField === 'createdDate' && (sortDirection === 'desc' ? '↓' : '↑')}
-              </TableHeaderCell>
-              <TableHeaderCell className="text-gray-500 font-semibold">Clicks</TableHeaderCell>
-              <TableHeaderCell className="text-gray-500 font-semibold">Calls Booked</TableHeaderCell>
-              <TableHeaderCell className="text-gray-500 font-semibold">Sales Made</TableHeaderCell>
-              <TableHeaderCell
-                className="text-gray-500 font-semibold cursor-pointer"
-                onClick={() => setSortField(f => (f === 'revenue' ? (setSortDirection(d => d === 'desc' ? 'asc' : 'desc'), 'revenue') : (setSortDirection('desc'), 'revenue')))}
-              >
+              </th>
+              <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">Clicks</th>
+              <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">Calls Booked</th>
+              <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">Sales Made</th>
+              <th className="text-gray-500 font-semibold px-2 py-1 text-xs cursor-pointer whitespace-nowrap" onClick={() => setSortField(f => (f === 'revenue' ? (setSortDirection(d => d === 'desc' ? 'asc' : 'desc'), 'revenue') : (setSortDirection('desc'), 'revenue')))}>
                 Revenue {sortField === 'revenue' && (sortDirection === 'desc' ? '↓' : '↑')}
-              </TableHeaderCell>
-              <TableHeaderCell className="text-gray-500 font-semibold">Actions</TableHeaderCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
+              </th>
+              <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
             {filteredLinks.map(link => (
-              <TableRow key={link.id} className="hover:bg-gray-50">
-                <TableCell className="font-medium text-gray-800">{link.title}</TableCell>
-                <TableCell>
-                  <Badge color={link.platform === 'YouTube' ? 'blue' : 'rose'}>{link.platform}</Badge>
-                </TableCell>
-                <TableCell>
-                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline text-sm">
+              <tr key={link.id} className="hover:bg-gray-50">
+                <td className="font-medium text-gray-800 px-2 py-1 text-xs whitespace-nowrap">{link.title}</td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">
+                  <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${link.platform === 'YouTube' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'}`}>{link.platform}</span>
+                </td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-700 font-mono bg-gray-100 px-2 py-1 rounded-md text-xs select-all">{link.shortLink}</span>
+                    <button
+                      className={`rounded-full p-2 ${copiedId === link.id ? 'bg-emerald-100' : ''}`}
+                      onClick={() => handleCopy(link)}
+                      title="Copy shortened link"
+                    >
+                      <Copy size={14} className={copiedId === link.id ? 'text-emerald-600' : 'text-gray-500'} />
+                    </button>
+                  </div>
+                </td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">
+                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline text-xs">
                     {link.url}
                   </a>
-                </TableCell>
-                <TableCell>
-                  <Button
-                    variant="light"
+                </td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">
+                  <button
                     className="rounded-full p-2"
                     onClick={() => handleDownloadQR(link)}
                   >
                     <Download size={16} />
-                  </Button>
-                </TableCell>
-                <TableCell>{format(parseISO(link.createdDate), 'dd MMM yyyy')}</TableCell>
-                <TableCell>{link.clicks}</TableCell>
-                <TableCell>{link.calls}</TableCell>
-                <TableCell>{link.sales}</TableCell>
-                <TableCell>${link.revenue.toLocaleString()}</TableCell>
-                <TableCell>
-                  <Button variant="light" className="rounded-full p-2">
+                  </button>
+                </td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">{format(parseISO(link.createdDate), 'dd MMM yyyy')}</td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">{link.clicks}</td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">{link.calls}</td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">{link.sales}</td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">${link.revenue.toLocaleString()}</td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">
+                  <button className="rounded-full p-2">
                     <MoreHorizontal size={18} />
-                  </Button>
-                </TableCell>
-              </TableRow>
+                  </button>
+                </td>
+              </tr>
             ))}
-          </TableBody>
-        </Table>
+          </tbody>
+        </table>
         {filteredLinks.length === 0 && (
           <div className="text-center text-gray-400 py-8">No trackable links found.</div>
         )}
-      </Card>
+      </div>
 
       {/* Modal for creating a new trackable link */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-md">
-            <h2 className="text-xl font-semibold mb-4">Create Trackable Link</h2>
+      <Dialog open={showModal} onClose={() => setShowModal(false)} className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 bg-black bg-opacity-40" aria-hidden="true" />
+        <div className="relative bg-white rounded-xl shadow-lg p-8 w-full max-w-lg mx-auto">
+          <Dialog.Panel>
+            <Dialog.Title className="text-xl font-semibold mb-4">Create Trackable Link</Dialog.Title>
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Title</label>
@@ -236,7 +246,7 @@ export default function TrackableLinks() {
                   value={form.title}
                   onChange={handleFormChange}
                   placeholder="Optional"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-200 focus:ring-opacity-50"
                 />
               </div>
               <div>
@@ -245,7 +255,7 @@ export default function TrackableLinks() {
                   name="platform"
                   value={form.platform}
                   onChange={handleFormChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-200 focus:ring-opacity-50"
                 >
                   {platforms.map(p => (
                     <option key={p} value={p}>{p}</option>
@@ -260,7 +270,7 @@ export default function TrackableLinks() {
                   value={form.url}
                   onChange={handleFormChange}
                   required
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-200 focus:ring-opacity-50"
                 />
               </div>
               <div>
@@ -271,7 +281,7 @@ export default function TrackableLinks() {
                   value={form.tags}
                   onChange={handleFormChange}
                   placeholder="Comma separated"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-200 focus:ring-opacity-50"
                 />
               </div>
               <div>
@@ -280,7 +290,7 @@ export default function TrackableLinks() {
                   name="attribution"
                   value={form.attribution}
                   onChange={handleFormChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-200 focus:ring-opacity-50"
                 >
                   {attributionWindows.map(w => (
                     <option key={w} value={w}>{w}</option>
@@ -290,7 +300,7 @@ export default function TrackableLinks() {
               <div className="flex gap-4 mt-6">
                 <button
                   type="submit"
-                  className="flex-1 bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 transition-colors"
+                  className="flex-1 bg-emerald-600 text-white py-2 px-4 rounded-md hover:bg-emerald-700 transition-colors font-semibold"
                 >
                   Create
                 </button>
@@ -303,9 +313,9 @@ export default function TrackableLinks() {
                 </button>
               </div>
             </form>
-          </div>
+          </Dialog.Panel>
         </div>
-      )}
+      </Dialog>
     </div>
   );
 } 
