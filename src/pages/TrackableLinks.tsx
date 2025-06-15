@@ -1,80 +1,93 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Copy, MoreHorizontal, Download } from 'lucide-react';
 import { format, parseISO, isWithinInterval } from 'date-fns';
 import { Dialog } from '@headlessui/react';
+import { useUser } from '@clerk/clerk-react';
+import { supabase, downloadQRCode } from '../lib/supabase';
+import { TrackableLink, LinkStats } from '../types/trackableLinks';
 
 const platforms = ['YouTube', 'Instagram'];
-const attributionWindows = ['1 day', '7 days', '14 days'];
-const dummyLinks = Array.from({ length: 20 }, (_, i) => {
-  const platform = i % 2 === 0 ? 'YouTube' : 'Instagram';
-  const createdDate = new Date(2025, 5, 1 + i);
-  const short = `amg.ly/${1000 + i}`;
-  return {
-    id: i + 1,
-    title: platform === 'YouTube' ? `YouTube Content #${i + 1}` : `Instagram Promo #${i + 1}`,
-    platform,
-    url: platform === 'YouTube'
-      ? `https://youtube.com/watch?v=abc${100 + i}`
-      : `https://linkin.bio/amazinggains${i}`,
-    shortLink: short,
-    createdDate: format(createdDate, 'yyyy-MM-dd'),
-    clicks: Math.floor(Math.random() * 800),
-    calls: Math.floor(Math.random() * 20),
-    sales: Math.floor(Math.random() * 10),
-    revenue: Math.floor(Math.random() * 3000),
-    tags: i % 3 === 0 ? ['promo', 'summer'] : [],
-    attribution: attributionWindows[i % 3],
-  };
-});
-
-const initialDateRange = {
-  from: new Date(2025, 5, 1),
-  to: new Date(2025, 5, 20),
-};
+const attributionWindows = [1, 7, 14];
 
 export default function TrackableLinks() {
+  const { user } = useUser();
   const [search, setSearch] = useState('');
-  const [dateRange, setDateRange] = useState<{ from: Date | null; to: Date | null }>(initialDateRange);
-  const [sortField, setSortField] = useState<'createdDate' | 'revenue'>('createdDate');
+  const [dateRange, setDateRange] = useState<{ from: Date | null; to: Date | null }>({
+    from: new Date(new Date().setDate(new Date().getDate() - 30)),
+    to: new Date()
+  });
+  const [sortField, setSortField] = useState<'created_at' | 'revenue'>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showModal, setShowModal] = useState(false);
-  const [links, setLinks] = useState(dummyLinks);
+  const [links, setLinks] = useState<TrackableLink[]>([]);
+  const [linkStats, setLinkStats] = useState<Record<string, LinkStats>>({});
   const [visibleRows, setVisibleRows] = useState(10);
-  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   // Modal form state
   const [form, setForm] = useState({
     title: '',
     platform: 'YouTube',
     url: '',
-    tags: '',
-    attribution: '7 days',
+    attribution_window_days: 7,
   });
 
-  // Filtered and sorted data
-  const filteredLinks = useMemo(() => {
-    let filtered = links.filter(link =>
-      link.title.toLowerCase().includes(search.toLowerCase())
-    );
-    if (dateRange.from && dateRange.to) {
-      filtered = filtered.filter(link =>
-        isWithinInterval(parseISO(link.createdDate), {
-          start: dateRange.from!,
-          end: dateRange.to!,
-        })
-      );
-    }
-    filtered.sort((a, b) => {
-      if (sortField === 'createdDate') {
-        const aDate = parseISO(a.createdDate).getTime();
-        const bDate = parseISO(b.createdDate).getTime();
-        return sortDirection === 'desc' ? bDate - aDate : aDate - bDate;
-      } else {
-        return sortDirection === 'desc' ? b.revenue - a.revenue : a.revenue - b.revenue;
+  // Fetch links and stats
+  async function fetchLinks() {
+    if (!user) return;
+    setLoading(true);
+    try {
+      // Fetch links
+      const { data: linksData, error: linksError } = await supabase
+        .from('links')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      console.log('Fetched linksData:', linksData);
+      if (linksError) {
+        console.error('Supabase linksError:', linksError);
+        throw linksError;
       }
-    });
-    return filtered.slice(0, visibleRows);
-  }, [links, search, dateRange, sortField, sortDirection, visibleRows]);
+      setLinks(linksData || []);
+
+      // Fetch stats for each link
+      const stats: Record<string, LinkStats> = {};
+      for (const link of linksData || []) {
+        try {
+          const [clicks, calls, sales] = await Promise.all([
+            supabase.from('clicks').select('id').eq('short_code', link.short_code),
+            supabase.from('calls').select('id').eq('short_code', link.short_code),
+            supabase.from('sales').select('id, amount').eq('short_code', link.short_code),
+          ]);
+          console.log(`Stats for link ${link.short_code}:`, { clicks, calls, sales });
+          stats[link.id] = {
+            clicks: clicks.data?.length || 0,
+            calls: calls.data?.length || 0,
+            sales: sales.data?.length || 0,
+            revenue: sales.data?.reduce((sum, sale) => sum + (sale.amount || 0), 0) || 0,
+          };
+        } catch (statError) {
+          console.error(`Error fetching stats for link ${link.short_code}:`, statError);
+        }
+      }
+      setLinkStats(stats);
+      console.log('Final stats object:', stats);
+    } catch (error) {
+      console.error('Error fetching links:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchLinks();
+  }, [user]);
+
+  // TEMP: Render all links directly for debugging
+  // const filteredLinks = useMemo(() => { ... }, [...]);
+  console.log('Rendering table with links:', links);
 
   // Infinite scroll handler
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -88,41 +101,78 @@ export default function TrackableLinks() {
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
-  const handleCreate = (e: React.FormEvent) => {
+
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLinks([
-      {
-        id: links.length + 1,
-        title: form.title || `Untitled Link #${links.length + 1}`,
-        platform: form.platform,
-        url: form.url,
-        shortLink: `amg.ly/${1000 + links.length + 1}`,
-        createdDate: format(new Date(), 'yyyy-MM-dd'),
-        clicks: Math.floor(Math.random() * 800),
-        calls: Math.floor(Math.random() * 20),
-        sales: Math.floor(Math.random() * 10),
-        revenue: Math.floor(Math.random() * 3000),
-        tags: form.tags ? form.tags.split(',').map(t => t.trim()) : [],
-        attribution: form.attribution,
-      },
-      ...links,
-    ]);
-    setShowModal(false);
-    setForm({ title: '', platform: 'YouTube', url: '', tags: '', attribution: '7 days' });
+    if (!user) return;
+
+    try {
+      // Generate short code
+      let shortCode;
+      try {
+        const { data: generatedCode, error: shortCodeError } = await supabase
+          .rpc('generate_short_code');
+        if (shortCodeError) throw shortCodeError;
+        shortCode = generatedCode;
+        console.log('Generated shortCode from Supabase:', shortCode);
+      } catch (error) {
+        console.warn('Falling back to frontend short code generation:', error);
+        shortCode = Math.floor(Math.random() * 10000).toString();
+        console.log('Generated shortCode from frontend:', shortCode);
+      }
+
+      // Create link
+      const { data: link, error: linkError } = await supabase
+        .from('links')
+        .insert([{
+          user_id: user.id,
+          short_code: shortCode,
+          destination_url: form.url,
+          title: form.title || `Untitled Link ${links.length + 1}`,
+          platform: form.platform,
+          attribution_window_days: form.attribution_window_days,
+        }])
+        .select()
+        .single();
+
+      console.log('Inserted link:', link);
+      if (linkError) {
+        console.error('Supabase linkError:', linkError);
+        throw linkError;
+      }
+
+      // Re-fetch links and stats from backend for robust UI update
+      await fetchLinks();
+      setVisibleRows(10);
+      setShowModal(false);
+      setForm({ title: '', platform: 'YouTube', url: '', attribution_window_days: 7 });
+    } catch (error) {
+      console.error('Error creating link:', error);
+      alert('Failed to create link. Please try again.');
+    }
   };
 
-  // Download QR code (dummy)
-  const handleDownloadQR = (link: any) => {
-    // In real app, generate QR and download as PNG
-    alert(`Download QR for: ${link.url}`);
+  // Download QR code
+  const handleDownloadQR = async (link: TrackableLink) => {
+    const shortUrl = `https://amg.ly/${link.short_code}`;
+    await downloadQRCode(shortUrl, link.title || `link-${link.short_code}`);
   };
 
   // Copy shortened link
-  const handleCopy = (link: any) => {
-    navigator.clipboard.writeText(link.shortLink);
+  const handleCopy = (link: TrackableLink) => {
+    const shortUrl = `https://amg.ly/${link.short_code}`;
+    navigator.clipboard.writeText(shortUrl);
     setCopiedId(link.id);
     setTimeout(() => setCopiedId(null), 1200);
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col w-full max-w-full px-0 min-h-screen bg-gray-50 font-sans">
@@ -139,14 +189,14 @@ export default function TrackableLinks() {
           <input
             type="date"
             value={dateRange.from ? format(dateRange.from, 'yyyy-MM-dd') : ''}
-            onChange={e => setDateRange((r: { from: Date | null; to: Date | null }) => ({ ...r, from: e.target.value ? new Date(e.target.value) : null }))}
+            onChange={e => setDateRange(r => ({ ...r, from: e.target.value ? new Date(e.target.value) : null }))}
             className="ml-2 px-2 py-1 rounded border border-gray-200 text-sm"
           />
           <span className="mx-1 text-gray-400">to</span>
           <input
             type="date"
             value={dateRange.to ? format(dateRange.to, 'yyyy-MM-dd') : ''}
-            onChange={e => setDateRange((r: { from: Date | null; to: Date | null }) => ({ ...r, to: e.target.value ? new Date(e.target.value) : null }))}
+            onChange={e => setDateRange(r => ({ ...r, to: e.target.value ? new Date(e.target.value) : null }))}
             className="px-2 py-1 rounded border border-gray-200 text-sm"
           />
         </div>
@@ -159,7 +209,7 @@ export default function TrackableLinks() {
       </div>
 
       {/* Table */}
-      <div className="overflow-auto max-h-[70vh] rounded-xl shadow-soft bg-white w-full max-w-full">
+      <div className="overflow-auto max-h-[70vh] rounded-xl shadow-soft bg-white w-full max-w-full" onScroll={handleScroll}>
         <table className="min-w-full divide-y divide-gray-200 w-full max-w-full">
           <thead className="sticky top-0 bg-white z-10">
             <tr>
@@ -168,8 +218,8 @@ export default function TrackableLinks() {
               <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">Shortened Link</th>
               <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">Destination URL</th>
               <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">QR Code</th>
-              <th className="text-gray-500 font-semibold px-2 py-1 text-xs cursor-pointer whitespace-nowrap" onClick={() => setSortField(f => (f === 'createdDate' ? (setSortDirection(d => d === 'desc' ? 'asc' : 'desc'), 'createdDate') : (setSortDirection('desc'), 'createdDate')))}>
-                Created Date {sortField === 'createdDate' && (sortDirection === 'desc' ? '↓' : '↑')}
+              <th className="text-gray-500 font-semibold px-2 py-1 text-xs cursor-pointer whitespace-nowrap" onClick={() => setSortField(f => (f === 'created_at' ? (setSortDirection(d => d === 'desc' ? 'asc' : 'desc'), 'created_at') : (setSortDirection('desc'), 'created_at')))}>
+                Created Date {sortField === 'created_at' && (sortDirection === 'desc' ? '↓' : '↑')}
               </th>
               <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">Clicks</th>
               <th className="text-gray-500 font-semibold px-2 py-1 text-xs text-left whitespace-nowrap">Calls Booked</th>
@@ -181,7 +231,7 @@ export default function TrackableLinks() {
             </tr>
           </thead>
           <tbody>
-            {filteredLinks.map(link => (
+            {links.map(link => (
               <tr key={link.id} className="hover:bg-gray-50">
                 <td className="font-medium text-gray-800 px-2 py-1 text-xs whitespace-nowrap">{link.title}</td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap">
@@ -189,7 +239,7 @@ export default function TrackableLinks() {
                 </td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap">
                   <div className="flex items-center gap-2">
-                    <span className="text-gray-700 font-mono bg-gray-100 px-2 py-1 rounded-md text-xs select-all">{link.shortLink}</span>
+                    <span className="text-gray-700 font-mono bg-gray-100 px-2 py-1 rounded-md text-xs select-all">amg.ly/{link.short_code}</span>
                     <button
                       className={`rounded-full p-2 ${copiedId === link.id ? 'bg-emerald-100' : ''}`}
                       onClick={() => handleCopy(link)}
@@ -200,8 +250,8 @@ export default function TrackableLinks() {
                   </div>
                 </td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap">
-                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline text-xs">
-                    {link.url}
+                  <a href={link.destination_url} target="_blank" rel="noopener noreferrer" className="text-emerald-700 hover:underline text-xs">
+                    {link.destination_url}
                   </a>
                 </td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap">
@@ -212,11 +262,11 @@ export default function TrackableLinks() {
                     <Download size={16} />
                   </button>
                 </td>
-                <td className="px-2 py-1 text-xs whitespace-nowrap">{format(parseISO(link.createdDate), 'dd MMM yyyy')}</td>
-                <td className="px-2 py-1 text-xs whitespace-nowrap">{link.clicks}</td>
-                <td className="px-2 py-1 text-xs whitespace-nowrap">{link.calls}</td>
-                <td className="px-2 py-1 text-xs whitespace-nowrap">{link.sales}</td>
-                <td className="px-2 py-1 text-xs whitespace-nowrap">${link.revenue.toLocaleString()}</td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">{format(parseISO(link.created_at), 'dd MMM yyyy')}</td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">{linkStats[link.id]?.clicks || 0}</td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">{linkStats[link.id]?.calls || 0}</td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">{linkStats[link.id]?.sales || 0}</td>
+                <td className="px-2 py-1 text-xs whitespace-nowrap">${(linkStats[link.id]?.revenue || 0).toLocaleString()}</td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap">
                   <button className="rounded-full p-2">
                     <MoreHorizontal size={18} />
@@ -226,7 +276,7 @@ export default function TrackableLinks() {
             ))}
           </tbody>
         </table>
-        {filteredLinks.length === 0 && (
+        {links.length === 0 && (
           <div className="text-center text-gray-400 py-8">No trackable links found.</div>
         )}
       </div>
@@ -274,26 +324,15 @@ export default function TrackableLinks() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Tags</label>
-                <input
-                  type="text"
-                  name="tags"
-                  value={form.tags}
-                  onChange={handleFormChange}
-                  placeholder="Comma separated"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-200 focus:ring-opacity-50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Attribution Window</label>
+                <label className="block text-sm font-medium text-gray-700">Attribution Window (days)</label>
                 <select
-                  name="attribution"
-                  value={form.attribution}
+                  name="attribution_window_days"
+                  value={form.attribution_window_days}
                   onChange={handleFormChange}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-200 focus:ring-opacity-50"
                 >
-                  {attributionWindows.map(w => (
-                    <option key={w} value={w}>{w}</option>
+                  {attributionWindows.map(days => (
+                    <option key={days} value={days}>{days} days</option>
                   ))}
                 </select>
               </div>
