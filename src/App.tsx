@@ -3,13 +3,14 @@ import { ClerkProvider, SignIn, SignUp, SignedIn, SignedOut } from '@clerk/clerk
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import TrackableLinks from './pages/TrackableLinks';
+import Redirect from './pages/redirect/[shortCode]';
 
 // Debug environment variables
-console.log('Environment variables:', {
-  clerkKey: import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ? 'Present' : 'Missing',
-  supabaseUrl: import.meta.env.VITE_SUPABASE_URL ? 'Present' : 'Missing',
-  supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY ? 'Present' : 'Missing'
-});
+// console.log('Environment variables:', {
+//   clerkKey: import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ? 'Present' : 'Missing',
+//   supabaseUrl: import.meta.env.VITE_SUPABASE_URL ? 'Present' : 'Missing',
+//   supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY ? 'Present' : 'Missing'
+// });
 
 if (!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY) {
   console.error('Missing Clerk Publishable Key');
@@ -70,6 +71,8 @@ export default function App() {
             <Route path="integrations" element={<div>Integrations</div>} />
             <Route path="settings" element={<div>Account Settings</div>} />
           </Route>
+          {/* Public redirect route */}
+          <Route path="/:shortCode" element={<Redirect />} />
         </Routes>
       </Router>
     </ClerkProvider>

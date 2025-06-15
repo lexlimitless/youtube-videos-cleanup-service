@@ -45,35 +45,25 @@ export default function TrackableLinks() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      console.log('Fetched linksData:', linksData);
-      if (linksError) {
-        console.error('Supabase linksError:', linksError);
-        throw linksError;
-      }
+      if (linksError) throw linksError;
       setLinks(linksData || []);
 
       // Fetch stats for each link
       const stats: Record<string, LinkStats> = {};
       for (const link of linksData || []) {
-        try {
-          const [clicks, calls, sales] = await Promise.all([
-            supabase.from('clicks').select('id').eq('short_code', link.short_code),
-            supabase.from('calls').select('id').eq('short_code', link.short_code),
-            supabase.from('sales').select('id, amount').eq('short_code', link.short_code),
-          ]);
-          console.log(`Stats for link ${link.short_code}:`, { clicks, calls, sales });
-          stats[link.id] = {
-            clicks: clicks.data?.length || 0,
-            calls: calls.data?.length || 0,
-            sales: sales.data?.length || 0,
-            revenue: sales.data?.reduce((sum, sale) => sum + (sale.amount || 0), 0) || 0,
-          };
-        } catch (statError) {
-          console.error(`Error fetching stats for link ${link.short_code}:`, statError);
-        }
+        const [clicks, calls, sales] = await Promise.all([
+          supabase.from('clicks').select('id').eq('short_code', link.short_code),
+          supabase.from('calls').select('id').eq('short_code', link.short_code),
+          supabase.from('sales').select('id, amount').eq('short_code', link.short_code),
+        ]);
+        stats[link.id] = {
+          clicks: clicks.data?.length || 0,
+          calls: calls.data?.length || 0,
+          sales: sales.data?.length || 0,
+          revenue: sales.data?.reduce((sum, sale) => sum + (sale.amount || 0), 0) || 0,
+        };
       }
       setLinkStats(stats);
-      console.log('Final stats object:', stats);
     } catch (error) {
       console.error('Error fetching links:', error);
     } finally {
@@ -85,9 +75,32 @@ export default function TrackableLinks() {
     fetchLinks();
   }, [user]);
 
-  // TEMP: Render all links directly for debugging
-  // const filteredLinks = useMemo(() => { ... }, [...]);
-  console.log('Rendering table with links:', links);
+  // Restore filtered and sorted data
+  const filteredLinks = useMemo(() => {
+    let filtered = links.filter(link =>
+      link.title?.toLowerCase().includes(search.toLowerCase())
+    );
+    if (dateRange.from && dateRange.to) {
+      filtered = filtered.filter(link =>
+        isWithinInterval(parseISO(link.created_at), {
+          start: dateRange.from!,
+          end: dateRange.to!,
+        })
+      );
+    }
+    filtered.sort((a, b) => {
+      if (sortField === 'created_at') {
+        const aDate = parseISO(a.created_at).getTime();
+        const bDate = parseISO(b.created_at).getTime();
+        return sortDirection === 'desc' ? bDate - aDate : aDate - bDate;
+      } else {
+        const aRevenue = linkStats[a.id]?.revenue || 0;
+        const bRevenue = linkStats[b.id]?.revenue || 0;
+        return sortDirection === 'desc' ? bRevenue - aRevenue : aRevenue - bRevenue;
+      }
+    });
+    return filtered.slice(0, visibleRows);
+  }, [links, linkStats, search, dateRange, sortField, sortDirection, visibleRows]);
 
   // Infinite scroll handler
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -109,17 +122,8 @@ export default function TrackableLinks() {
     try {
       // Generate short code
       let shortCode;
-      try {
-        const { data: generatedCode, error: shortCodeError } = await supabase
-          .rpc('generate_short_code');
-        if (shortCodeError) throw shortCodeError;
-        shortCode = generatedCode;
-        console.log('Generated shortCode from Supabase:', shortCode);
-      } catch (error) {
-        console.warn('Falling back to frontend short code generation:', error);
-        shortCode = Math.floor(Math.random() * 10000).toString();
-        console.log('Generated shortCode from frontend:', shortCode);
-      }
+      // Fallback to frontend short code generation
+      shortCode = Math.floor(Math.random() * 10000).toString();
 
       // Create link
       const { data: link, error: linkError } = await supabase
@@ -135,11 +139,7 @@ export default function TrackableLinks() {
         .select()
         .single();
 
-      console.log('Inserted link:', link);
-      if (linkError) {
-        console.error('Supabase linkError:', linkError);
-        throw linkError;
-      }
+      if (linkError) throw linkError;
 
       // Re-fetch links and stats from backend for robust UI update
       await fetchLinks();
@@ -231,7 +231,7 @@ export default function TrackableLinks() {
             </tr>
           </thead>
           <tbody>
-            {links.map(link => (
+            {filteredLinks.map(link => (
               <tr key={link.id} className="hover:bg-gray-50">
                 <td className="font-medium text-gray-800 px-2 py-1 text-xs whitespace-nowrap">{link.title}</td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap">
@@ -276,7 +276,7 @@ export default function TrackableLinks() {
             ))}
           </tbody>
         </table>
-        {links.length === 0 && (
+        {filteredLinks.length === 0 && (
           <div className="text-center text-gray-400 py-8">No trackable links found.</div>
         )}
       </div>
