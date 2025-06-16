@@ -5,6 +5,7 @@ import { Dialog, Menu } from '@headlessui/react';
 import { useUser } from '@clerk/clerk-react';
 import { supabase, downloadQRCode } from '../lib/supabase';
 import { TrackableLink, LinkStats } from '../types/trackableLinks';
+import { createPortal } from 'react-dom';
 
 const platforms = ['YouTube', 'Instagram'];
 const attributionWindows = [1, 7, 14];
@@ -27,6 +28,8 @@ export default function TrackableLinks() {
   const [loading, setLoading] = useState(true);
   const [editingLink, setEditingLink] = useState<TrackableLink | null>(null);
   const [deletingLink, setDeletingLink] = useState<TrackableLink | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [menuLinkId, setMenuLinkId] = useState<string | null>(null);
 
   // Modal form state
   const [form, setForm] = useState({
@@ -361,48 +364,54 @@ export default function TrackableLinks() {
                 <td className="px-2 py-1 text-xs whitespace-nowrap">{linkStats[link.id]?.calls || 0}</td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap">{linkStats[link.id]?.sales || 0}</td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap">${(linkStats[link.id]?.revenue || 0).toLocaleString()}</td>
-                <td className="px-2 py-1 text-xs whitespace-nowrap">
-                  <button className="rounded-full p-2">
-                    <Menu as="div" className="relative inline-block text-left">
-                      <Menu.Button className="rounded-full p-2 hover:bg-gray-100 focus:outline-none">
-                        <MoreHorizontal size={18} />
-                      </Menu.Button>
-                      <Menu.Items className="absolute right-0 z-20 mt-2 w-36 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
-                        <div className="py-1">
-                          <Menu.Item>
-                            {({ active }) => (
-                              <button
-                                className={`w-full text-left px-4 py-2 text-sm ${active ? 'bg-gray-100' : ''}`}
-                                onClick={() => handleDuplicate(link)}
-                              >
-                                Duplicate
-                              </button>
-                            )}
-                          </Menu.Item>
-                          <Menu.Item>
-                            {({ active }) => (
-                              <button
-                                className={`w-full text-left px-4 py-2 text-sm ${active ? 'bg-gray-100' : ''}`}
-                                onClick={() => handleEdit(link)}
-                              >
-                                Edit
-                              </button>
-                            )}
-                          </Menu.Item>
-                          <Menu.Item>
-                            {({ active }) => (
-                              <button
-                                className={`w-full text-left px-4 py-2 text-sm text-red-600 ${active ? 'bg-gray-100' : ''}`}
-                                onClick={() => handleDelete(link)}
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </Menu.Item>
-                        </div>
-                      </Menu.Items>
-                    </Menu>
-                  </button>
+                <td className="px-2 py-1 text-xs whitespace-nowrap relative">
+                  <Menu as="div" className="relative inline-block text-left">
+                    <Menu.Button
+                      className="rounded-full p-2 hover:bg-gray-100 focus:outline-none"
+                      onClick={e => {
+                        const rect = (e.target as HTMLElement).getBoundingClientRect();
+                        setMenuPosition({ x: rect.right, y: rect.bottom });
+                        setMenuLinkId(link.id);
+                      }}
+                    >
+                      <MoreHorizontal size={18} />
+                    </Menu.Button>
+                    <Menu.Items
+                      static
+                      as={React.Fragment}
+                    >
+                      {menuLinkId === link.id && menuPosition && (
+                        createPortal(
+                          <div className="fixed z-50 w-36 rounded-lg bg-white shadow-xl ring-1 ring-black ring-opacity-5 flex flex-col py-2"
+                            style={{
+                              top: menuPosition.y + 8,
+                              left: menuPosition.x - 144,
+                            }}
+                          >
+                            <button
+                              className="w-full text-left px-4 py-2 text-sm font-medium hover:bg-gray-100"
+                              onClick={() => { handleDuplicate(link); setMenuLinkId(null); setMenuPosition(null); }}
+                            >
+                              Duplicate
+                            </button>
+                            <button
+                              className="w-full text-left px-4 py-2 text-sm font-medium hover:bg-gray-100"
+                              onClick={() => { handleEdit(link); setMenuLinkId(null); setMenuPosition(null); }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="w-full text-left px-4 py-2 text-sm font-medium text-red-600 hover:bg-gray-100"
+                              onClick={() => { handleDelete(link); setMenuLinkId(null); setMenuPosition(null); }}
+                            >
+                              Delete
+                            </button>
+                          </div>,
+                          document.body
+                        )
+                      )}
+                    </Menu.Items>
+                  </Menu>
                 </td>
               </tr>
             ))}
