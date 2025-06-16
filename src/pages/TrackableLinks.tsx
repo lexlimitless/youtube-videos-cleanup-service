@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Copy, MoreHorizontal, Download } from 'lucide-react';
 import { format, parseISO, isWithinInterval } from 'date-fns';
 import { Dialog, Menu } from '@headlessui/react';
@@ -30,6 +30,9 @@ export default function TrackableLinks() {
   const [deletingLink, setDeletingLink] = useState<TrackableLink | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [menuLinkId, setMenuLinkId] = useState<string | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [menuLink, setMenuLink] = useState<TrackableLink | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   // Modal form state
   const [form, setForm] = useState({
@@ -80,6 +83,23 @@ export default function TrackableLinks() {
   useEffect(() => {
     fetchLinks();
   }, [user]);
+
+  useEffect(() => {
+    if (!menuAnchor) return;
+    function handleClick(event: MouseEvent) {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node) &&
+        menuAnchor &&
+        !menuAnchor.contains(event.target as Node)
+      ) {
+        setMenuAnchor(null);
+        setMenuLink(null);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [menuAnchor, menuLink]);
 
   // Restore filtered and sorted data
   const filteredLinks = useMemo(() => {
@@ -365,53 +385,47 @@ export default function TrackableLinks() {
                 <td className="px-2 py-1 text-xs whitespace-nowrap">{linkStats[link.id]?.sales || 0}</td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap">${(linkStats[link.id]?.revenue || 0).toLocaleString()}</td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap relative">
-                  <Menu as="div" className="relative inline-block text-left">
-                    <Menu.Button
-                      className="rounded-full p-2 hover:bg-gray-100 focus:outline-none"
-                      onClick={e => {
-                        const rect = (e.target as HTMLElement).getBoundingClientRect();
-                        setMenuPosition({ x: rect.right, y: rect.bottom });
-                        setMenuLinkId(link.id);
+                  <button
+                    className="rounded-full p-2 hover:bg-gray-100 focus:outline-none"
+                    onClick={e => {
+                      setMenuAnchor(e.currentTarget as HTMLElement);
+                      setMenuLink(link);
+                    }}
+                  >
+                    <MoreHorizontal size={18} />
+                  </button>
+                  {menuAnchor && menuLink && createPortal(
+                    <div
+                      ref={menuRef}
+                      className="z-50 w-40 rounded-xl bg-white shadow-soft flex flex-col py-2"
+                      style={{
+                        position: 'fixed',
+                        top: menuAnchor.getBoundingClientRect().bottom + 8,
+                        left: menuAnchor.getBoundingClientRect().left,
                       }}
+                      tabIndex={-1}
                     >
-                      <MoreHorizontal size={18} />
-                    </Menu.Button>
-                    <Menu.Items
-                      static
-                      as={React.Fragment}
-                    >
-                      {menuLinkId === link.id && menuPosition && (
-                        createPortal(
-                          <div className="fixed z-50 w-36 rounded-lg bg-white shadow-xl ring-1 ring-black ring-opacity-5 flex flex-col py-2"
-                            style={{
-                              top: menuPosition.y + 8,
-                              left: menuPosition.x - 144,
-                            }}
-                          >
-                            <button
-                              className="w-full text-left px-4 py-2 text-sm font-medium hover:bg-gray-100"
-                              onClick={() => { handleDuplicate(link); setMenuLinkId(null); setMenuPosition(null); }}
-                            >
-                              Duplicate
-                            </button>
-                            <button
-                              className="w-full text-left px-4 py-2 text-sm font-medium hover:bg-gray-100"
-                              onClick={() => { handleEdit(link); setMenuLinkId(null); setMenuPosition(null); }}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              className="w-full text-left px-4 py-2 text-sm font-medium text-red-600 hover:bg-gray-100"
-                              onClick={() => { handleDelete(link); setMenuLinkId(null); setMenuPosition(null); }}
-                            >
-                              Delete
-                            </button>
-                          </div>,
-                          document.body
-                        )
-                      )}
-                    </Menu.Items>
-                  </Menu>
+                      <button
+                        className="w-full text-left px-4 py-2 text-sm font-medium hover:bg-gray-100"
+                        onClick={() => { handleDuplicate(menuLink); setMenuAnchor(null); setMenuLink(null); }}
+                      >
+                        Duplicate
+                      </button>
+                      <button
+                        className="w-full text-left px-4 py-2 text-sm font-medium hover:bg-gray-100"
+                        onClick={() => { handleEdit(menuLink); setMenuAnchor(null); setMenuLink(null); }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="w-full text-left px-4 py-2 text-sm font-medium text-red-600 hover:bg-gray-100"
+                        onClick={() => { handleDelete(menuLink); setMenuAnchor(null); setMenuLink(null); }}
+                      >
+                        Delete
+                      </button>
+                    </div>,
+                    document.body
+                  )}
                 </td>
               </tr>
             ))}
