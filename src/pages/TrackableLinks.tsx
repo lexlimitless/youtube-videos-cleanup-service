@@ -8,6 +8,7 @@ import { TrackableLink, LinkStats } from '../types/trackableLinks';
 
 const platforms = ['YouTube', 'Instagram'];
 const attributionWindows = [1, 7, 14];
+const SHORT_LINK_DOMAIN = import.meta.env.VITE_SHORT_LINK_DOMAIN || 'https://moreclientslesscrickets.com';
 
 export default function TrackableLinks() {
   const { user } = useUser();
@@ -154,13 +155,13 @@ export default function TrackableLinks() {
 
   // Download QR code
   const handleDownloadQR = async (link: TrackableLink) => {
-    const shortUrl = `https://amg.ly/${link.short_code}`;
+    const shortUrl = `${SHORT_LINK_DOMAIN}/${link.short_code}`;
     await downloadQRCode(shortUrl, link.title || `link-${link.short_code}`);
   };
 
   // Copy shortened link
   const handleCopy = (link: TrackableLink) => {
-    const shortUrl = `https://amg.ly/${link.short_code}`;
+    const shortUrl = `${SHORT_LINK_DOMAIN}/${link.short_code}`;
     navigator.clipboard.writeText(shortUrl);
     setCopiedId(link.id);
     setTimeout(() => setCopiedId(null), 1200);
@@ -239,7 +240,9 @@ export default function TrackableLinks() {
                 </td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap">
                   <div className="flex items-center gap-2">
-                    <span className="text-gray-700 font-mono bg-gray-100 px-2 py-1 rounded-md text-xs select-all">amg.ly/{link.short_code}</span>
+                    <span className="text-gray-700 font-mono bg-gray-100 px-2 py-1 rounded-md text-xs select-all">
+                      {SHORT_LINK_DOMAIN.replace(/^https?:\/\//, '')}/{link.short_code}
+                    </span>
                     <button
                       className={`rounded-full p-2 ${copiedId === link.id ? 'bg-emerald-100' : ''}`}
                       onClick={() => handleCopy(link)}
