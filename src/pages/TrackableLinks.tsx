@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Copy, MoreHorizontal, Download } from 'lucide-react';
 import { format, parseISO, isWithinInterval } from 'date-fns';
-import { Dialog } from '@headlessui/react';
+import { Dialog, Menu } from '@headlessui/react';
 import { useUser } from '@clerk/clerk-react';
 import { supabase, downloadQRCode } from '../lib/supabase';
 import { TrackableLink, LinkStats } from '../types/trackableLinks';
@@ -25,6 +25,8 @@ export default function TrackableLinks() {
   const [visibleRows, setVisibleRows] = useState(10);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingLink, setEditingLink] = useState<TrackableLink | null>(null);
+  const [deletingLink, setDeletingLink] = useState<TrackableLink | null>(null);
 
   // Modal form state
   const [form, setForm] = useState({
@@ -167,6 +169,95 @@ export default function TrackableLinks() {
     setTimeout(() => setCopiedId(null), 1200);
   };
 
+  // Duplicate link
+  const handleDuplicate = async (link: TrackableLink) => {
+    if (!user) return;
+    try {
+      // Generate new short code
+      let shortCode = Math.floor(Math.random() * 10000).toString();
+      const { data: newLink, error } = await supabase
+        .from('links')
+        .insert([{
+          user_id: user.id,
+          short_code: shortCode,
+          destination_url: link.destination_url,
+          title: link.title + ' (Copy)',
+          platform: link.platform,
+          attribution_window_days: link.attribution_window_days,
+        }])
+        .select()
+        .single();
+      if (error) throw error;
+      await fetchLinks();
+    } catch (error) {
+      alert('Failed to duplicate link.');
+    }
+  };
+
+  // Edit link
+  const handleEdit = (link: TrackableLink) => {
+    setEditingLink(link);
+    setForm({
+      title: link.title,
+      platform: link.platform,
+      url: link.destination_url,
+      attribution_window_days: link.attribution_window_days,
+    });
+    setShowModal(true);
+  };
+
+  // Delete link
+  const handleDelete = async (link: TrackableLink) => {
+    if (!window.confirm('Are you sure you want to delete this link?')) return;
+    try {
+      await supabase.from('links').delete().eq('id', link.id);
+      await fetchLinks();
+    } catch (error) {
+      alert('Failed to delete link.');
+    }
+  };
+
+  // Save (create or update)
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    try {
+      if (editingLink) {
+        // Update existing link
+        const { error } = await supabase
+          .from('links')
+          .update({
+            title: form.title,
+            platform: form.platform,
+            destination_url: form.url,
+            attribution_window_days: form.attribution_window_days,
+          })
+          .eq('id', editingLink.id);
+        if (error) throw error;
+      } else {
+        // Create new link
+        let shortCode = Math.floor(Math.random() * 10000).toString();
+        const { error } = await supabase
+          .from('links')
+          .insert([{
+            user_id: user.id,
+            short_code: shortCode,
+            destination_url: form.url,
+            title: form.title || `Untitled Link ${links.length + 1}`,
+            platform: form.platform,
+            attribution_window_days: form.attribution_window_days,
+          }]);
+        if (error) throw error;
+      }
+      await fetchLinks();
+      setShowModal(false);
+      setEditingLink(null);
+      setForm({ title: '', platform: 'YouTube', url: '', attribution_window_days: 7 });
+    } catch (error) {
+      alert('Failed to save link.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -272,7 +363,45 @@ export default function TrackableLinks() {
                 <td className="px-2 py-1 text-xs whitespace-nowrap">${(linkStats[link.id]?.revenue || 0).toLocaleString()}</td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap">
                   <button className="rounded-full p-2">
-                    <MoreHorizontal size={18} />
+                    <Menu as="div" className="relative inline-block text-left">
+                      <Menu.Button className="rounded-full p-2 hover:bg-gray-100 focus:outline-none">
+                        <MoreHorizontal size={18} />
+                      </Menu.Button>
+                      <Menu.Items className="absolute right-0 z-20 mt-2 w-36 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                        <div className="py-1">
+                          <Menu.Item>
+                            {({ active }) => (
+                              <button
+                                className={`w-full text-left px-4 py-2 text-sm ${active ? 'bg-gray-100' : ''}`}
+                                onClick={() => handleDuplicate(link)}
+                              >
+                                Duplicate
+                              </button>
+                            )}
+                          </Menu.Item>
+                          <Menu.Item>
+                            {({ active }) => (
+                              <button
+                                className={`w-full text-left px-4 py-2 text-sm ${active ? 'bg-gray-100' : ''}`}
+                                onClick={() => handleEdit(link)}
+                              >
+                                Edit
+                              </button>
+                            )}
+                          </Menu.Item>
+                          <Menu.Item>
+                            {({ active }) => (
+                              <button
+                                className={`w-full text-left px-4 py-2 text-sm text-red-600 ${active ? 'bg-gray-100' : ''}`}
+                                onClick={() => handleDelete(link)}
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </Menu.Item>
+                        </div>
+                      </Menu.Items>
+                    </Menu>
                   </button>
                 </td>
               </tr>
@@ -284,13 +413,13 @@ export default function TrackableLinks() {
         )}
       </div>
 
-      {/* Modal for creating a new trackable link */}
-      <Dialog open={showModal} onClose={() => setShowModal(false)} className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Modal for creating or editing a trackable link */}
+      <Dialog open={showModal} onClose={() => { setShowModal(false); setEditingLink(null); }} className="fixed inset-0 z-50 flex items-center justify-center">
         <div className="fixed inset-0 bg-black bg-opacity-40" aria-hidden="true" />
         <div className="relative bg-white rounded-xl shadow-lg p-8 w-full max-w-lg mx-auto">
           <Dialog.Panel>
             <Dialog.Title className="text-xl font-semibold mb-4">Create Trackable Link</Dialog.Title>
-            <form onSubmit={handleCreate} className="space-y-4">
+            <form onSubmit={handleSave} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Title</label>
                 <input
@@ -344,7 +473,7 @@ export default function TrackableLinks() {
                   type="submit"
                   className="flex-1 bg-emerald-600 text-white py-2 px-4 rounded-md hover:bg-emerald-700 transition-colors font-semibold"
                 >
-                  Create
+                  {editingLink ? 'Save' : 'Create'}
                 </button>
                 <button
                   type="button"
