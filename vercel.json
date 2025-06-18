@@ -5,6 +5,10 @@
       "destination": "/api/redirect/:id"
     },
     {
+      "source": "/api/oauth/calendly/callback",
+      "destination": "/api/oauth/calendly/callback"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

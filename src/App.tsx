@@ -1,9 +1,11 @@
+import './envtest';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ClerkProvider, SignIn, SignUp, SignedIn, SignedOut } from '@clerk/clerk-react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import TrackableLinks from './pages/TrackableLinks';
 import Redirect from './pages/redirect/[shortCode]';
+import Integrations from './pages/Integrations';
 
 // Debug environment variables
 // console.log('Environment variables:', {
@@ -68,7 +70,7 @@ export default function App() {
             <Route path="qr-codes" element={<div>QR Codes</div>} />
             <Route path="links" element={<TrackableLinks />} />
             <Route path="attribution" element={<div>Attribution Settings</div>} />
-            <Route path="integrations" element={<div>Integrations</div>} />
+            <Route path="integrations" element={<Integrations />} />
             <Route path="settings" element={<div>Account Settings</div>} />
           </Route>
           {/* Public redirect route */}
