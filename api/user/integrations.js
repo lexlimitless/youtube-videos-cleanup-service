@@ -6,7 +6,8 @@ async function handler(req, res, userId) {
     const { data, error } = await supabaseAdmin
       .from('user_integrations')
       .select('*')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('is_connected', true);
 
     if (error) return res.status(500).json({ error: error.message });
     

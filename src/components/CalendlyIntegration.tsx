@@ -26,11 +26,12 @@ export default function CalendlyIntegration() {
         
         if (response.ok && Array.isArray(result.data)) {
           const calendly = result.data.find(
-            (row: IntegrationRow) => row.provider === 'calendly'
+            (row: IntegrationRow) => row.provider === 'calendly' && row.is_connected === true
           );
           console.log('Found Calendly integration:', calendly);
-          setIsConnected(!!calendly);
-          setShowHelpGuide(!!calendly);
+          const isActive = !!calendly && calendly.is_connected === true;
+          setIsConnected(isActive);
+          setShowHelpGuide(isActive);
         } else {
           setIsConnected(false);
           setShowHelpGuide(false);
