@@ -1,0 +1,1 @@
+ALTER TABLE public.user_integrations ADD COLUMN webhook_id TEXT; 
