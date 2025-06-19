@@ -58,6 +58,39 @@ export default async function handler(req, res) {
       return res.status(400).send('OAuth failed');
     }
 
+    // Get user's organization URI
+    const userRes = await fetch('https://api.calendly.com/users/me', {
+      headers: {
+        'Authorization': `Bearer ${tokenData.access_token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    const userData = await userRes.json();
+    console.log('Calendly user data:', userData);
+
+    if (!userData.resource?.current_organization) {
+      console.error('Failed to get user organization:', userData);
+      return res.status(500).send('Failed to get user organization');
+    }
+
+    // Set up webhook subscription
+    const webhookUrl = `${process.env.VERCEL_URL || 'https://qr-code-generator-e5k7asgp0-paul-amazinggains-projects.vercel.app'}/api/webhooks/calendly`;
+    const webhookRes = await fetch('https://api.calendly.com/webhook_subscriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${tokenData.access_token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        url: webhookUrl,
+        organization: userData.resource.current_organization,
+        scope: 'organization',
+        events: ['invitee.created']
+      })
+    });
+    const webhookData = await webhookRes.json();
+    console.log('Calendly webhook setup response:', webhookData);
+
     // Initialize webhook status if it doesn't exist
     const { error: webhookError } = await supabaseAdmin
       .from('webhook_status')
@@ -65,7 +98,8 @@ export default async function handler(req, res) {
         {
           provider: 'calendly',
           is_active: true,
-          last_checked_at: new Date().toISOString()
+          last_checked_at: new Date().toISOString(),
+          webhook_id: webhookData.resource?.id // Store the webhook ID
         }
       ], { onConflict: 'provider' });
 
@@ -83,6 +117,7 @@ export default async function handler(req, res) {
           provider: 'calendly',
           access_token: tokenData.access_token,
           is_connected: true,
+          webhook_id: webhookData.resource?.id // Store the webhook ID with the integration
         }
       ], { onConflict: 'user_id,provider' });
 

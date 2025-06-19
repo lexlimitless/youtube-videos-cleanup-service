@@ -27,7 +27,7 @@ export default function Redirect() {
         }
 
         // Record click
-        const { error: clickError } = await supabase
+        await supabase
           .from('clicks')
           .insert([{
             short_code: shortCode,
@@ -38,12 +38,11 @@ export default function Redirect() {
             session_id: getSessionId(),
           }]);
 
-        if (clickError) {
-          // Remove all console.error statements
-        }
-
-        // Redirect to destination
-        window.location.href = link.destination_url;
+        // Append ref=shortCode to the destination URL
+        const base = new URL(link.destination_url, window.location.origin);
+        base.searchParams.set('ref', shortCode);
+        // Redirect to the updated URL
+        window.location.href = base.toString();
       } catch (error) {
         navigate('/');
       }

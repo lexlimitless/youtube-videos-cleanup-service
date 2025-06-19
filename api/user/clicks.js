@@ -9,9 +9,6 @@ async function handler(req, res, userId) {
       return res.status(400).json({ error: 'Missing short_code' });
     }
 
-    // Debug: log incoming request
-    console.log('[DEBUG] userId:', userId, 'short_code:', short_code);
-
     // Verify the link belongs to the user
     const { data: linkData, error: linkError } = await supabaseAdmin
       .from('links')
@@ -20,11 +17,7 @@ async function handler(req, res, userId) {
       .eq('user_id', userId)
       .single();
 
-    if (linkError) {
-      console.error('[DEBUG] Supabase linkError:', linkError);
-    }
     if (!linkData) {
-      console.error('[DEBUG] No linkData found for short_code:', short_code, 'and userId:', userId);
       return res.status(404).json({ error: 'Link not found' });
     }
 
@@ -36,7 +29,6 @@ async function handler(req, res, userId) {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('[DEBUG] Supabase clicks error:', error);
       return res.status(500).json({ error: error.message });
     }
     return res.status(200).json({ data });

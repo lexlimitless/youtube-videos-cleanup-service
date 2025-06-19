@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import CalendlyIntegration from '../components/CalendlyIntegration';
+import CalendlyHelpGuide from '../components/CalendlyHelpGuide';
 
 const integrations = [
   {
@@ -120,6 +121,13 @@ export default function Integrations() {
           </div>
         ))}
       </div>
+      
+      {/* Show Calendly Help Guide when connected */}
+      {calendlyConnected && (
+        <div className="mt-8">
+          <CalendlyHelpGuide />
+        </div>
+      )}
     </div>
   );
 } 
