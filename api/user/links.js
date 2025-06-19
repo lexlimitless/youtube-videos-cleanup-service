@@ -32,10 +32,10 @@ async function handler(req, res, userId) {
   }
 
   if (req.method === 'POST') {
-    const { original_url, title, description } = req.body;
+    const { destination_url, title, platform, attribution_window_days } = req.body;
     
-    if (!original_url) {
-      return res.status(400).json({ error: 'Missing original_url' });
+    if (!destination_url) {
+      return res.status(400).json({ error: 'Missing destination_url' });
     }
 
     // Generate short code
@@ -45,10 +45,11 @@ async function handler(req, res, userId) {
       .from('links')
       .insert([{
         user_id: userId,
-        original_url,
+        destination_url,
         short_code: shortCode,
         title: title || '',
-        description: description || ''
+        platform: platform || 'YouTube',
+        attribution_window_days: attribution_window_days || 7
       }])
       .select()
       .single();
@@ -58,7 +59,7 @@ async function handler(req, res, userId) {
   }
 
   if (req.method === 'PUT') {
-    const { id, original_url, title, description } = req.body;
+    const { id, destination_url, title, platform, attribution_window_days } = req.body;
     
     if (!id) {
       return res.status(400).json({ error: 'Missing id' });
@@ -67,9 +68,10 @@ async function handler(req, res, userId) {
     const { data, error } = await supabaseAdmin
       .from('links')
       .update({
-        original_url,
+        destination_url,
         title: title || '',
-        description: description || '',
+        platform: platform || 'YouTube',
+        attribution_window_days: attribution_window_days || 7,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)

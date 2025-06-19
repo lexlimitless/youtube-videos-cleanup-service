@@ -13,7 +13,7 @@ export function withAuth(handler) {
       const request = new Request(url, {
         method: req.method,
         headers: req.headers,
-        body: req.body ? JSON.stringify(req.body) : undefined,
+        body: req.body,
       });
       
       const authResult = await clerk.authenticateRequest(request);
@@ -57,7 +57,7 @@ export async function getUserIdFromRequest(req) {
     const request = new Request(url, {
       method: req.method,
       headers: req.headers,
-      body: req.body ? JSON.stringify(req.body) : undefined,
+      body: req.body,
     });
     
     const authResult = await clerk.authenticateRequest(request);
