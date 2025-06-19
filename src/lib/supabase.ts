@@ -1,10 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
+import type { Database } from './supabase.d';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-console.log('supabaseUrl:', supabaseUrl, typeof supabaseUrl, supabaseUrl && supabaseUrl.length, JSON.stringify(supabaseUrl));
-console.log('supabaseKey:', supabaseKey, typeof supabaseKey, supabaseKey && supabaseKey.length, JSON.stringify(supabaseKey));
 
 if (!supabaseUrl || !supabaseKey) {
   console.trace('Missing Supabase environment variables');
@@ -16,22 +14,32 @@ const supabaseUrlFormatted = supabaseUrl.startsWith('http')
   ? supabaseUrl
   : `https://${supabaseUrl}`;
 
-let supabase;
-try {
-  supabase = createClient(supabaseUrlFormatted, supabaseKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: false
-    }
-  });
-} catch (e) {
-  console.error('Error initializing Supabase client:', e);
-  console.trace('Supabase client initialization failed');
-  throw e;
-}
+export const supabase = createClient<Database>(supabaseUrlFormatted, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false
+  },
+  db: {
+    schema: 'public'
+  }
+});
 
-export { supabase };
+// Add error handling wrapper for Supabase queries
+export async function safeQuery<T>(
+  queryFn: () => Promise<{ data: T | null; error: any }>
+): Promise<{ data: T | null; error: any }> {
+  try {
+    const result = await queryFn();
+    if (result.error) {
+      console.error('Supabase query error:', result.error);
+    }
+    return result;
+  } catch (e) {
+    console.error('Unexpected error during Supabase query:', e);
+    return { data: null, error: e };
+  }
+}
 
 export async function generateQRCode(url: string): Promise<string> {
   const response = await fetch(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`);

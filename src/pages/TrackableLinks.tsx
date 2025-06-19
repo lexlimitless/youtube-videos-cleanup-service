@@ -3,7 +3,6 @@ import { Copy, MoreHorizontal, Download } from 'lucide-react';
 import { format, parseISO, isWithinInterval } from 'date-fns';
 import { Dialog, Menu } from '@headlessui/react';
 import { useUser } from '@clerk/clerk-react';
-import { supabase, downloadQRCode } from '../lib/supabase';
 import { TrackableLink, LinkStats } from '../types/trackableLinks';
 import { createPortal } from 'react-dom';
 
@@ -47,13 +46,8 @@ export default function TrackableLinks() {
     if (!user) return;
     setLoading(true);
     try {
-      // Fetch links
-      const { data: linksData, error: linksError } = await supabase
-        .from('links')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
+      const response = await fetch('/api/user/links');
+      const { data: linksData, error: linksError } = await response.json();
       if (linksError) throw linksError;
       setLinks(linksData || []);
 
@@ -61,15 +55,15 @@ export default function TrackableLinks() {
       const stats: Record<string, LinkStats> = {};
       for (const link of linksData || []) {
         const [clicks, calls, sales] = await Promise.all([
-          supabase.from('clicks').select('id').eq('short_code', link.short_code),
-          supabase.from('calls').select('id').eq('short_code', link.short_code),
-          supabase.from('sales').select('id, amount').eq('short_code', link.short_code),
+          fetch(`/api/user/clicks?short_code=${link.short_code}`).then(res => res.json()),
+          fetch(`/api/user/calls?short_code=${link.short_code}`).then(res => res.json()),
+          fetch(`/api/user/sales?short_code=${link.short_code}`).then(res => res.json()),
         ]);
         stats[link.id] = {
           clicks: clicks.data?.length || 0,
           calls: calls.data?.length || 0,
           sales: sales.data?.length || 0,
-          revenue: sales.data?.reduce((sum, sale) => sum + (sale.amount || 0), 0) || 0,
+          revenue: sales.data?.reduce((sum: number, sale: { amount?: number }) => sum + (sale.amount || 0), 0) || 0,
         };
       }
       setLinkStats(stats);
@@ -147,27 +141,25 @@ export default function TrackableLinks() {
 
     try {
       // Generate short code
-      let shortCode;
-      // Fallback to frontend short code generation
-      shortCode = Math.floor(Math.random() * 10000).toString();
+      let shortCode = Math.floor(Math.random() * 10000).toString();
 
-      // Create link
-      const { data: link, error: linkError } = await supabase
-        .from('links')
-        .insert([{
-          user_id: user.id,
+      // Create link using the API endpoint
+      const response = await fetch('/api/user/links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           short_code: shortCode,
           destination_url: form.url,
           title: form.title || `Untitled Link ${links.length + 1}`,
           platform: form.platform,
           attribution_window_days: form.attribution_window_days,
-        }])
-        .select()
-        .single();
+        }),
+      });
 
+      const { data: link, error: linkError } = await response.json();
       if (linkError) throw linkError;
 
-      // Re-fetch links and stats from backend for robust UI update
+      // Re-fetch links and stats
       await fetchLinks();
       setVisibleRows(10);
       setShowModal(false);
@@ -179,10 +171,17 @@ export default function TrackableLinks() {
   };
 
   // Download QR code
-  const handleDownloadQR = async (link: TrackableLink) => {
-    const shortUrl = `${SHORT_LINK_DOMAIN}/${link.short_code}`;
-    await downloadQRCode(shortUrl, link.title || `link-${link.short_code}`);
-  };
+  async function downloadQRCode(url: string, filename: string) {
+    const response = await fetch(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`);
+    const blob = await response.blob();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${filename}-qr.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  }
 
   // Copy shortened link
   const handleCopy = (link: TrackableLink) => {
@@ -198,18 +197,18 @@ export default function TrackableLinks() {
     try {
       // Generate new short code
       let shortCode = Math.floor(Math.random() * 10000).toString();
-      const { data: newLink, error } = await supabase
-        .from('links')
-        .insert([{
-          user_id: user.id,
+      const duplicateResponse = await fetch('/api/user/links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           short_code: shortCode,
           destination_url: link.destination_url,
           title: link.title + ' (Copy)',
           platform: link.platform,
           attribution_window_days: link.attribution_window_days,
-        }])
-        .select()
-        .single();
+        }),
+      });
+      const { data: newLink, error } = await duplicateResponse.json();
       if (error) throw error;
       await fetchLinks();
     } catch (error) {
@@ -233,9 +232,13 @@ export default function TrackableLinks() {
   const handleDelete = async (link: TrackableLink) => {
     if (!window.confirm('Are you sure you want to delete this link?')) return;
     try {
-      await supabase.from('links').delete().eq('id', link.id);
+      const response = await fetch(`/api/user/links?id=${link.id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('Failed to delete link');
       await fetchLinks();
     } catch (error) {
+      console.error('Error deleting link:', error);
       alert('Failed to delete link.');
     }
   };
@@ -247,37 +250,42 @@ export default function TrackableLinks() {
     try {
       if (editingLink) {
         // Update existing link
-        const { error } = await supabase
-          .from('links')
-          .update({
+        const response = await fetch(`/api/user/links?id=${editingLink.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             title: form.title,
             platform: form.platform,
             destination_url: form.url,
             attribution_window_days: form.attribution_window_days,
-          })
-          .eq('id', editingLink.id);
-        if (error) throw error;
+          }),
+        });
+        const { error: updateError } = await response.json();
+        if (updateError) throw updateError;
       } else {
         // Create new link
         let shortCode = Math.floor(Math.random() * 10000).toString();
-        const { error } = await supabase
-          .from('links')
-          .insert([{
-            user_id: user.id,
+        const response = await fetch('/api/user/links', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             short_code: shortCode,
             destination_url: form.url,
             title: form.title || `Untitled Link ${links.length + 1}`,
             platform: form.platform,
             attribution_window_days: form.attribution_window_days,
-          }]);
-        if (error) throw error;
+          }),
+        });
+        const { error: createError } = await response.json();
+        if (createError) throw createError;
       }
       await fetchLinks();
       setShowModal(false);
       setEditingLink(null);
       setForm({ title: '', platform: 'YouTube', url: '', attribution_window_days: 7 });
     } catch (error) {
-      alert('Failed to save link.');
+      console.error('Error saving link:', error);
+      alert('Failed to save link. Please try again.');
     }
   };
 
@@ -374,7 +382,7 @@ export default function TrackableLinks() {
                 <td className="px-2 py-1 text-xs whitespace-nowrap">
                   <button
                     className="rounded-full p-2"
-                    onClick={() => handleDownloadQR(link)}
+                    onClick={() => downloadQRCode(`${SHORT_LINK_DOMAIN}/${link.short_code}`, link.title || `link-${link.short_code}`)}
                   >
                     <Download size={16} />
                   </button>

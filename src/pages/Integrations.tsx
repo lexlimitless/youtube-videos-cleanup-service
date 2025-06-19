@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import CalendlyIntegration from '../components/CalendlyIntegration';
-import { supabase } from '../lib/supabase';
 
 const integrations = [
   {
@@ -61,8 +60,13 @@ export default function Integrations() {
 
   useEffect(() => {
     async function checkCalendlyStatus() {
-      const { data } = await supabase.from('webhook_status').select('is_active').eq('provider', 'calendly').single();
-      setCalendlyConnected(!!data?.is_active);
+      try {
+        const response = await fetch('/api/user/webhook-status');
+        const result = await response.json();
+        setCalendlyConnected(!!result.data?.is_active);
+      } catch (err) {
+        setCalendlyConnected(false);
+      }
     }
     checkCalendlyStatus();
   }, []);

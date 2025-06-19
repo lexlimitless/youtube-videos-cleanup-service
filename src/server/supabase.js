@@ -1,13 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-console.log('SERVER: SUPABASE_URL:', process.env.SUPABASE_URL);
-console.log('SERVER: SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY);
-
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-
-console.log('supabaseUrl (js):', supabaseUrl, typeof supabaseUrl, supabaseUrl && supabaseUrl.length, JSON.stringify(supabaseUrl));
-console.log('supabaseKey (js):', supabaseKey, typeof supabaseKey, supabaseKey && supabaseKey.length, JSON.stringify(supabaseKey));
 
 let supabase;
 try {
