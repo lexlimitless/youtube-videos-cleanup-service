@@ -1,7 +1,5 @@
 -- Drop existing objects if they exist
-DROP TRIGGER IF EXISTS update_user_integrations_updated_at ON user_integrations;
 DROP FUNCTION IF EXISTS update_user_integrations_updated_at();
-DROP TRIGGER IF EXISTS update_webhook_status_updated_at ON webhook_status;
 DROP FUNCTION IF EXISTS update_webhook_status_updated_at();
 DROP TABLE IF EXISTS user_integrations;
 DROP TABLE IF EXISTS webhook_status;
@@ -19,7 +17,7 @@ CREATE TABLE user_integrations (
 );
 
 -- Create trigger to update updated_at
-CREATE FUNCTION update_user_integrations_updated_at()
+CREATE OR REPLACE FUNCTION update_user_integrations_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = NOW();
@@ -43,7 +41,7 @@ CREATE TABLE webhook_status (
 );
 
 -- Create trigger to update webhook_status updated_at
-CREATE FUNCTION update_webhook_status_updated_at()
+CREATE OR REPLACE FUNCTION update_webhook_status_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at = NOW();

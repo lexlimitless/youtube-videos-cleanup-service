@@ -82,7 +82,8 @@ async function handler(req, res, userId) {
             last_error: 'Disconnected by user',
             webhook_id: null
           })
-          .eq('provider', provider);
+          .eq('provider', provider)
+          .eq('user_id', userId);
       }
 
       return res.status(200).json({ success: true });

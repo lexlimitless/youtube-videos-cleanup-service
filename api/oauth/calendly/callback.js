@@ -94,14 +94,13 @@ export default async function handler(req, res) {
     // Initialize webhook status if it doesn't exist
     const { error: webhookError } = await supabaseAdmin
       .from('webhook_status')
-      .upsert([
-        {
-          provider: 'calendly',
-          is_active: true,
-          last_checked_at: new Date().toISOString(),
-          webhook_id: webhookData.resource?.id // Store the webhook ID
-        }
-      ], { onConflict: 'provider' });
+      .upsert({
+        provider: 'calendly',
+        is_active: true,
+        last_checked_at: new Date().toISOString(),
+        webhook_id: webhookData.resource?.id,
+        user_id: user_id
+      }, { onConflict: 'user_id, provider' });
 
     if (webhookError) {
       console.error('Error initializing webhook status:', webhookError);
