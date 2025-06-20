@@ -71,12 +71,20 @@ export default function CalendlyIntegration() {
   const handleConnect = async () => {
     setLoading(true);
     try {
+      const clientId = import.meta.env.VITE_CALENDLY_CLIENT_ID;
+      console.log('Attempting to connect with Calendly Client ID:', clientId);
+
+      if (!clientId) {
+        alert('The Calendly Client ID is not configured correctly. Please check the environment variables.');
+        setLoading(false);
+        return;
+      }
+
       const codeVerifier = generateRandomString(128);
       const codeChallenge = await generateCodeChallenge(codeVerifier);
       
       sessionStorage.setItem('calendly_code_verifier', codeVerifier);
       
-      const clientId = import.meta.env.VITE_CALENDLY_CLIENT_ID;
       const redirectUri = `${window.location.origin}/integrations/calendly-callback`;
       
       const authUrl = `https://auth.calendly.com/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
