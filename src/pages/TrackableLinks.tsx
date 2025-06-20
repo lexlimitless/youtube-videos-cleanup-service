@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Copy, MoreHorizontal, Download } from 'lucide-react';
 import { format, parseISO, isWithinInterval } from 'date-fns';
 import { Dialog, Menu } from '@headlessui/react';
-import { useUser } from '@clerk/clerk-react';
+import { useAuth, useUser } from '@clerk/clerk-react';
 import { TrackableLink, LinkStats } from '../types/trackableLinks';
 import { createPortal } from 'react-dom';
 
@@ -12,6 +12,7 @@ const SHORT_LINK_DOMAIN = import.meta.env.VITE_SHORT_LINK_DOMAIN || 'https://mor
 
 export default function TrackableLinks() {
   const { user } = useUser();
+  const { getToken } = useAuth();
   const [search, setSearch] = useState('');
   const [dateRange, setDateRange] = useState<{ from: Date | null; to: Date | null }>({
     from: new Date(new Date().setDate(new Date().getDate() - 30)),
@@ -46,7 +47,12 @@ export default function TrackableLinks() {
     if (!user) return;
     setLoading(true);
     try {
-      const response = await fetch('/api/user/links');
+      const token = await getToken();
+      if (!token) throw new Error("No auth token");
+
+      const response = await fetch('/api/user/links', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       const { data: linksData, error: linksError } = await response.json();
       if (linksError) throw linksError;
       setLinks(linksData || []);
@@ -55,9 +61,9 @@ export default function TrackableLinks() {
       const stats: Record<string, LinkStats> = {};
       for (const link of linksData || []) {
         const [clicks, calls, sales] = await Promise.all([
-          fetch(`/api/user/clicks?short_code=${link.short_code}`).then(res => res.json()),
-          fetch(`/api/user/calls?short_code=${link.short_code}`).then(res => res.json()),
-          fetch(`/api/user/sales?short_code=${link.short_code}`).then(res => res.json()),
+          fetch(`/api/user/clicks?short_code=${link.short_code}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()),
+          fetch(`/api/user/calls?short_code=${link.short_code}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()),
+          fetch(`/api/user/sales?short_code=${link.short_code}`, { headers: { 'Authorization': `Bearer ${token}` } }).then(res => res.json()),
         ]);
         stats[link.id] = {
           clicks: clicks.data?.length || 0,
@@ -140,13 +146,16 @@ export default function TrackableLinks() {
     if (!user) return;
 
     try {
+      const token = await getToken();
+      if (!token) throw new Error("No auth token");
+
       // Generate short code
       let shortCode = Math.floor(Math.random() * 10000).toString();
 
       // Create link using the API endpoint
       const response = await fetch('/api/user/links', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
           short_code: shortCode,
           destination_url: form.url,
@@ -195,11 +204,14 @@ export default function TrackableLinks() {
   const handleDuplicate = async (link: TrackableLink) => {
     if (!user) return;
     try {
+      const token = await getToken();
+      if (!token) throw new Error("No auth token");
+
       // Generate new short code
       let shortCode = Math.floor(Math.random() * 10000).toString();
       const duplicateResponse = await fetch('/api/user/links', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
           short_code: shortCode,
           destination_url: link.destination_url,
@@ -232,8 +244,12 @@ export default function TrackableLinks() {
   const handleDelete = async (link: TrackableLink) => {
     if (!window.confirm('Are you sure you want to delete this link?')) return;
     try {
+      const token = await getToken();
+      if (!token) throw new Error("No auth token");
+
       const response = await fetch(`/api/user/links?id=${link.id}`, {
         method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to delete link');
       await fetchLinks();
@@ -248,26 +264,28 @@ export default function TrackableLinks() {
     e.preventDefault();
     if (!user) return;
     try {
+      const token = await getToken();
+      if (!token) throw new Error("No auth token");
+
       if (editingLink) {
         // Update existing link
         const response = await fetch(`/api/user/links?id=${editingLink.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({
+            destination_url: form.url,
             title: form.title,
             platform: form.platform,
-            destination_url: form.url,
             attribution_window_days: form.attribution_window_days,
           }),
         });
-        const { error: updateError } = await response.json();
-        if (updateError) throw updateError;
+        if (!response.ok) throw new Error('Failed to update link');
       } else {
         // Create new link
         let shortCode = Math.floor(Math.random() * 10000).toString();
         const response = await fetch('/api/user/links', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({
             short_code: shortCode,
             destination_url: form.url,
@@ -276,9 +294,9 @@ export default function TrackableLinks() {
             attribution_window_days: form.attribution_window_days,
           }),
         });
-        const { error: createError } = await response.json();
-        if (createError) throw createError;
+        if (!response.ok) throw new Error('Failed to create link');
       }
+
       await fetchLinks();
       setShowModal(false);
       setEditingLink(null);
