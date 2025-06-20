@@ -8,8 +8,12 @@ export function withAuth(handler) {
   return async (req, res) => {
     console.log(`[Auth Middleware] - Starting auth for: ${req.url}`);
     try {
-      // The Clerk SDK can extract the token from the headers automatically.
-      const claims = await clerk.verifyToken(req.headers.authorization?.split(' ')[1]);
+      const token = req.headers.authorization?.split(' ')[1];
+      if (!token) {
+        return res.status(401).json({ error: 'Unauthorized: No token provided' });
+      }
+      
+      const claims = await clerk.tokens.verifyToken(token);
       
       if (!claims || !claims.sub) {
         console.error('[Auth Middleware] - Verification failed: No claims or user ID found.');
@@ -39,7 +43,9 @@ export function withAuth(handler) {
 // For now, it will be left as is to avoid breaking other parts of the app.
 export async function getUserIdFromRequest(req) {
   try {
-    const claims = await clerk.verifyToken(req.headers.authorization?.split(' ')[1]);
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return null;
+    const claims = await clerk.tokens.verifyToken(token);
     return claims?.sub || null;
   } catch (error) {
     console.error('Error getting userId from request:', error);

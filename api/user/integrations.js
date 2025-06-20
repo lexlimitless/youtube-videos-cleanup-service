@@ -63,7 +63,7 @@ async function handler(req, res, userId) {
         }
       }
 
-      // Delete the integration record
+      // Delete the integration record from our database
       const { error: deleteError } = await supabaseAdmin
         .from('user_integrations')
         .delete()
