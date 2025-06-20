@@ -145,7 +145,7 @@ const CalendlyHelpGuide = () => {
   } catch (e) {
     console.error("Calendly tracking script error:", e);
   }
-</script>\`;
+</script>`;
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-soft border border-gray-100">
