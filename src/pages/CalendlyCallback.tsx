@@ -25,17 +25,21 @@ export default function CalendlyCallback() {
       }
 
       try {
+        const payload = {
+          grant_type: 'authorization_code',
+          client_id: import.meta.env.VITE_CALENDLY_CLIENT_ID,
+          code: code,
+          redirect_uri: `${window.location.origin}/integrations/calendly-callback`,
+          code_verifier: codeVerifier,
+        };
+
+        console.log('Exchanging code for token with payload:', JSON.stringify(payload, null, 2));
+
         // Exchange authorization code for access token
         const tokenResponse = await fetch('https://auth.calendly.com/oauth/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            grant_type: 'authorization_code',
-            client_id: import.meta.env.VITE_CALENDLY_CLIENT_ID,
-            code: code,
-            redirect_uri: `${window.location.origin}/integrations/calendly-callback`,
-            code_verifier: codeVerifier,
-          }),
+          body: JSON.stringify(payload),
         });
 
         if (!tokenResponse.ok) {
