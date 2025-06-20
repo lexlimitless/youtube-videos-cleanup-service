@@ -16,11 +16,15 @@ function verifySignature(req, signingKey) {
 }
 
 export default async function handler(req, res) {
-  console.log('[Calendly] Webhook received:', {
-    method: req.method,
-    headers: req.headers,
-    body: req.body
-  });
+  // --- NEW EXTENSIVE LOGGING ---
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] --- CALENDLY WEBHOOK INVOCATION ---`);
+  console.log(`[${timestamp}] Request Method: ${req.method}`);
+  console.log(`[${timestamp}] Request URL: ${req.url}`);
+  console.log(`[${timestamp}] Request Headers:`, JSON.stringify(req.headers, null, 2));
+  console.log(`[${timestamp}] Request Body:`, JSON.stringify(req.body, null, 2));
+  console.log(`[${timestamp}] --- END OF INVOCATION LOG ---`);
+  // --- END OF LOGGING ---
   
   // Initialize webhook status if it doesn't exist
   const { error: initError } = await supabaseAdmin
