@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import CalendlyIntegration from '../components/CalendlyIntegration';
-import CalendlyHelpGuide from '../components/CalendlyHelpGuide';
 
 const integrations = [
   {
@@ -57,20 +56,6 @@ const integrations = [
 
 export default function Integrations() {
   const [search, setSearch] = useState('');
-  const [calendlyConnected, setCalendlyConnected] = useState(false);
-
-  useEffect(() => {
-    async function checkCalendlyStatus() {
-      try {
-        const response = await fetch('/api/user/webhook-status');
-        const result = await response.json();
-        setCalendlyConnected(!!result.data?.is_active);
-      } catch (err) {
-        setCalendlyConnected(false);
-      }
-    }
-    checkCalendlyStatus();
-  }, []);
 
   const filtered = integrations.filter(i =>
     i.name.toLowerCase().includes(search.toLowerCase())
@@ -104,30 +89,19 @@ export default function Integrations() {
               <span className="text-lg font-semibold text-gray-900">{integration.name}</span>
             </div>
             <span className="text-gray-600 text-sm mb-2">{integration.description}</span>
-            {integration.key === 'calendly' ? (
-              calendlyConnected ? (
-                <span className="absolute top-4 right-4 bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full">Connected</span>
-              ) : (
-                <span className="absolute top-4 right-4 bg-gray-100 text-gray-500 text-xs font-bold px-3 py-1 rounded-full">Not Connected</span>
-              )
-            ) : integration.status === 'coming' ? (
+            
+            {integration.status === 'coming' && (
               <span className="absolute top-4 right-4 bg-gray-100 text-gray-400 text-xs font-bold px-3 py-1 rounded-full">Coming Soon</span>
-            ) : null}
+            )}
+
             {integration.key === 'calendly' && (
-              <div className="w-full mt-2">
+              <div className="w-full mt-auto pt-4">
                 <CalendlyIntegration />
               </div>
             )}
           </div>
         ))}
       </div>
-      
-      {/* Show Calendly Help Guide when connected */}
-      {calendlyConnected && (
-        <div className="mt-8">
-          <CalendlyHelpGuide />
-        </div>
-      )}
     </div>
   );
 } 
