@@ -1,4 +1,5 @@
 ALTER TABLE webhook_status ADD COLUMN user_id TEXT;
+ALTER TABLE webhook_status ADD COLUMN webhook_id TEXT;
 
 -- Assuming a default user or handle existing rows appropriately
 -- For example, you might want to associate existing rows with a specific user
@@ -9,6 +10,7 @@ ALTER TABLE webhook_status ADD COLUMN user_id TEXT;
 -- Make user_id and provider unique together
 ALTER TABLE webhook_status DROP CONSTRAINT IF EXISTS webhook_status_provider_key;
 ALTER TABLE webhook_status ADD CONSTRAINT webhook_status_user_id_provider_key UNIQUE (user_id, provider);
+ALTER TABLE webhook_status ADD CONSTRAINT webhook_status_webhook_id_key UNIQUE (webhook_id);
 
 -- Add foreign key constraint to users table if it exists and is appropriate
 -- ALTER TABLE webhook_status ADD CONSTRAINT fk_user

@@ -95,12 +95,17 @@ async function handler(req, res, userId) {
     }, { onConflict: 'user_id, provider' });
 
     // Save the webhook status to the database
-    await supabaseAdmin.from('webhook_status').upsert({
+    const { error: webhookStatusError } = await supabaseAdmin.from('webhook_status').upsert({
       provider: 'calendly',
       is_active: true,
       webhook_id: webhookId,
       user_id: userId,
-    }, { onConflict: 'user_id, provider' });
+    }, { onConflict: 'webhook_id' });
+
+    if (webhookStatusError) {
+      console.error('Error saving webhook status:', webhookStatusError);
+      throw new Error('Failed to save webhook status.');
+    }
 
     return res.status(200).json({ success: true });
 
