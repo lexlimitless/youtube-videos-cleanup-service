@@ -13,18 +13,30 @@ async function handler(req, res, userId) {
       return res.status(400).json({ error: 'Invalid provider or missing authorization code/verifier' });
     }
 
+    const payload = {
+      grant_type: 'authorization_code',
+      client_id: process.env.VITE_CALENDLY_CLIENT_ID,
+      client_secret: process.env.CALENDLY_CLIENT_SECRET,
+      code: code,
+      redirect_uri: `${process.env.VITE_API_URL}/integrations/calendly-callback`,
+      code_verifier: codeVerifier,
+    };
+
+    console.log('--- Calendly Token Exchange ---');
+    console.log('Payload sent to Calendly (excluding secrets):', {
+      grant_type: payload.grant_type,
+      client_id: payload.client_id,
+      redirect_uri: payload.redirect_uri,
+      client_secret_present: !!payload.client_secret,
+      client_secret_length: payload.client_secret?.length || 0,
+      vite_api_url_present: !!process.env.VITE_API_URL,
+    });
+
     // Exchange authorization code for access token, now including the client_secret
     const tokenResponse = await fetch('https://auth.calendly.com/oauth/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            grant_type: 'authorization_code',
-            client_id: process.env.VITE_CALENDLY_CLIENT_ID,
-            client_secret: process.env.CALENDLY_CLIENT_SECRET,
-            code: code,
-            redirect_uri: `${process.env.VITE_API_URL}/integrations/calendly-callback`,
-            code_verifier: codeVerifier,
-        }),
+        body: JSON.stringify(payload),
     });
 
     if (!tokenResponse.ok) {
