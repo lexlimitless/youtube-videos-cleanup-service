@@ -1,8 +1,4 @@
-import { createClerkClient } from '@clerk/backend';
-
-const clerk = createClerkClient({ 
-  secretKey: process.env.CLERK_SECRET_KEY,
-});
+import { verifyToken } from '@clerk/backend';
 
 export function withAuth(handler) {
   return async (req, res) => {
@@ -13,7 +9,7 @@ export function withAuth(handler) {
         return res.status(401).json({ error: 'Unauthorized: No token provided' });
       }
       
-      const claims = await clerk.tokens.verifyToken(token);
+      const claims = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
       
       if (!claims || !claims.sub) {
         console.error('[Auth Middleware] - Verification failed: No claims or user ID found.');
@@ -45,7 +41,7 @@ export async function getUserIdFromRequest(req) {
   try {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return null;
-    const claims = await clerk.tokens.verifyToken(token);
+    const claims = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
     return claims?.sub || null;
   } catch (error) {
     console.error('Error getting userId from request:', error);
