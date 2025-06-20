@@ -16,33 +16,13 @@ function verifySignature(req, signingKey) {
 }
 
 export default async function handler(req, res) {
-  // --- NEW EXTENSIVE LOGGING ---
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] --- CALENDLY WEBHOOK INVOCATION ---`);
-  console.log(`[${timestamp}] Request Method: ${req.method}`);
-  console.log(`[${timestamp}] Request URL: ${req.url}`);
-  console.log(`[${timestamp}] Request Headers:`, JSON.stringify(req.headers, null, 2));
-  console.log(`[${timestamp}] Request Body:`, JSON.stringify(req.body, null, 2));
-  console.log(`[${timestamp}] --- END OF INVOCATION LOG ---`);
-  // --- END OF LOGGING ---
-  
-  // Initialize webhook status if it doesn't exist
-  const { error: initError } = await supabaseAdmin
-    .from('webhook_status')
-    .upsert([
-      {
-        provider: 'calendly',
-        is_active: true,
-        last_checked_at: new Date().toISOString()
-      }
-    ], { onConflict: 'provider' });
-
-  if (initError) {
-    console.error('[Calendly] Error initializing webhook status:', initError);
-  }
+  console.log('--- Calendly Webhook Received ---');
+  console.log('Request Method:', req.method);
+  console.log('Request Headers:', JSON.stringify(req.headers, null, 2));
+  console.log('Raw Request Body:', JSON.stringify(req.body, null, 2));
 
   if (req.method !== 'POST') {
-    console.log('[Calendly] Invalid method:', req.method);
+    console.log('Request method is not POST, returning 405.');
     return res.status(405).end();
   }
 

@@ -25,188 +25,87 @@ const CodeBlock = ({ code }: { code: string }) => {
 };
 
 const CalendlyHelpGuide = () => {
-  const [embedType, setEmbedType] = useState<'inline' | 'popup'>('inline');
+  const [activeTab, setActiveTab] = useState('inline');
+  const [copied, setCopied] = useState(false);
 
-  // --- Code for Inline Embed ---
-  const inlineStep1 = `<script 
-  type="text/javascript" 
-  src="https://assets.calendly.com/assets/external/widget.js" 
-  async
-></script>`;
-
-  const inlineStep2 = `<!-- If you already have this, just ensure it has id="calendly-embed" -->
-<div 
-  id="calendly-embed" 
-  class="calendly-inline-widget" 
-  data-url="https://calendly.com/YOUR_USER/YOUR_EVENT" 
-  style="min-width:320px;height:700px;"
-></div>`;
-
-  const inlineStep3 = `
+  // This is the single, complete code block for the user to copy.
+  // It includes the debugging console logs.
+  const inlineEmbedCode = `<!-- Calendly inline widget begin -->
+<div id="calendly-embed" style="min-width:320px;height:700px;"></div>
+<script type="text/javascript" src="https://assets.calendly.com/assets/external/widget.js" async></script>
 <script>
-  // This script finds the 'ref' from the URL, saves it to a cookie,
-  // and attaches it to your Calendly inline widget.
+  console.log("--- Calendly Embed Script Initialized ---");
   try {
-    const setCookie = (name, value, days) => {
-      let expires = "";
-      if (days) {
-        const date = new Date();
-        date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-        expires = "; expires=" + date.toUTCString();
-      }
-      document.cookie = name + "=" + (value || "") + expires + "; path=/";
-    };
+    const urlParams = new URLSearchParams(window.location.search);
+    const ref = urlParams.get('ref');
+    console.log("Extracted 'ref' parameter:", ref);
 
-    const getCookie = (name) => {
-      const nameEQ = name + "=";
-      const ca = document.cookie.split(';');
-      for (let i = 0; i < ca.length; i++) {
-        let c = ca[i];
-        while (c.charAt(0) == ' ') c = c.substring(1, c.length);
-        if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
-      }
-      return null;
-    };
+    // IMPORTANT: Replace with your actual Calendly link below
+    const calendlyBaseUrl = "https://calendly.com/YOUR_USERNAME/YOUR_EVENT_TYPE";
 
-    const ref = new URLSearchParams(window.location.search).get("ref");
+    let finalUrl = calendlyBaseUrl;
     if (ref) {
-      setCookie("mc_ref", ref, 1);
-    }
-    
-    const refCookie = getCookie("mc_ref");
-    if (refCookie) {
-      const widget = document.getElementById("calendly-embed");
-      if (widget) {
-        const baseUrl = widget.getAttribute("data-url");
-        if (!baseUrl.includes("ref=")) {
-          widget.setAttribute("data-url", baseUrl + (baseUrl.includes("?") ? "&" : "?") + "ref=" + refCookie);
-          if (window.Calendly) {
-            window.Calendly.initInlineWidgets();
-          }
-        }
-      }
-    }
-  } catch (e) {
-    console.error("Calendly tracking script error:", e);
-  }
-</script>`;
-
-  // --- Code for Popup Button ---
-  const popupStep1 = `<script 
-  type="text/javascript" 
-  src="https://assets.calendly.com/assets/external/widget.js" 
-  async
-></script>`;
-
-  const popupStep2 = `<!-- This button will trigger the Calendly popup. -->
-<!-- You can style it or use your own, just ensure it has id="calendly-popup-button" -->
-<button id="calendly-popup-button">Book a Call</button>`;
-  
-  const popupStep3 = `
-<script>
-  // This script finds the 'ref' from the URL, saves it to a cookie,
-  // and uses it when the Calendly popup is opened.
-  try {
-    const setCookie = (name, value, days) => {
-      let expires = "";
-      if (days) {
-        const date = new Date();
-        date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-        expires = "; expires=" + date.toUTCString();
-      }
-      document.cookie = name + "=" + (value || "") + expires + "; path=/";
-    };
-
-    const getCookie = (name) => {
-      const nameEQ = name + "=";
-      const ca = document.cookie.split(';');
-      for (let i = 0; i < ca.length; i++) {
-        let c = ca[i];
-        while (c.charAt(0) == ' ') c = c.substring(1, c.length);
-        if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
-      }
-      return null;
-    };
-
-    const ref = new URLSearchParams(window.location.search).get("ref");
-    if (ref) {
-      setCookie("mc_ref", ref, 1);
+      finalUrl = calendlyBaseUrl + "?ref=" + ref;
+      console.log("Constructed Calendly URL with ref:", finalUrl);
+    } else {
+      console.warn("Calendly Embed Script: 'ref' parameter not found in the URL. Widget will not be personalized for tracking.");
     }
 
-    const button = document.getElementById("calendly-popup-button");
-    if (button) {
-      button.addEventListener("click", () => {
-        const refCookie = getCookie("mc_ref");
-        Calendly.initPopupWidget({
-          url: "https://calendly.com/YOUR_USER/YOUR_EVENT" + (refCookie ? "?ref=" + refCookie : "")
-        });
+    window.onload = function() {
+      console.log("Window loaded, initializing Calendly widget.");
+      Calendly.initInlineWidget({
+        url: finalUrl,
+        parentElement: document.getElementById('calendly-embed'),
+        prefill: {},
+        utm: {}
       });
+      console.log("Calendly.initInlineWidget function called for URL:", finalUrl);
     }
   } catch (e) {
-    console.error("Calendly tracking script error:", e);
+    console.error("--- Calendly Embed Script FATAL ERROR ---", e);
   }
-</script>`;
+</script>
+<!-- Calendly inline widget end -->`;
+
+  const handleCopy = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-soft border border-gray-100">
-      <h2 className="text-xl font-bold text-gray-800 mb-2">How to Track Calls with Calendly</h2>
-      <p className="text-gray-600 mb-6">To attribute bookings to your links, add a script to the page where your Calendly booking is.</p>
-      
-      {/* --- Toggle Switch --- */}
-      <div className="flex justify-center bg-gray-100 rounded-lg p-1 mb-8 max-w-md mx-auto">
-        <button 
-          onClick={() => setEmbedType('inline')}
-          className={`w-1/2 px-4 py-2 text-sm font-semibold rounded-md transition-colors ${embedType === 'inline' ? 'bg-white text-emerald-700 shadow' : 'bg-transparent text-gray-500'}`}
-        >
-          Inline Embed
-        </button>
-        <button 
-          onClick={() => setEmbedType('popup')}
-          className={`w-1/2 px-4 py-2 text-sm font-semibold rounded-md transition-colors ${embedType === 'popup' ? 'bg-white text-emerald-700 shadow' : 'bg-transparent text-gray-500'}`}
-        >
-          Popup Button
-        </button>
-      </div>
+    <div className="bg-gray-50 p-6 rounded-lg shadow-inner">
+      <h2 className="text-2xl font-bold text-gray-800 mb-4">Calendly Integration Guide</h2>
+      <p className="mb-6 text-gray-600">
+        To track bookings, you need to add a small script to your external booking page. This script finds the unique <code className="font-mono bg-gray-200 px-1 rounded-sm">ref</code> code from the URL and attaches it to your Calendly booking link.
+      </p>
 
-      {embedType === 'inline' ? (
-        // --- Instructions for Inline Embed ---
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">Step 1: Add Calendly's Main Script</h3>
-            <p className="text-gray-600 mb-3">Ensure this script tag is in the `head` section of your website. Skip if it's already there.</p>
-            <CodeBlock code={inlineStep1} />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">Step 2: Identify Your Calendly Embed</h3>
-            <p className="text-gray-600 mb-3">Locate your Calendly embed `div`. The most important part is adding <span className="font-mono bg-gray-100 px-1 rounded">id="calendly-embed"</span> so our script can find it.</p>
-            <CodeBlock code={inlineStep2} />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">Step 3: Add the Tracking Script</h3>
-            <p className="text-gray-600 mb-3">Paste this script just before the closing `body` tag on your page. Remember to replace `YOUR_USER/YOUR_EVENT` in Step 2 with your actual Calendly link.</p>
-            <CodeBlock code={inlineStep3} />
-          </div>
-        </div>
-      ) : (
-        // --- Instructions for Popup Button ---
-        <div className="space-y-6">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">Step 1: Add Calendly's Main Script</h3>
-            <p className="text-gray-600 mb-3">Ensure this script tag is in the `head` section of your website. Skip if it's already there.</p>
-            <CodeBlock code={popupStep1} />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">Step 2: Add a Booking Button</h3>
-            <p className="text-gray-600 mb-3">Place this button where you want the booking trigger to be. The most important part is the <span className="font-mono bg-gray-100 px-1 rounded">id="calendly-popup-button"</span>.</p>
-            <CodeBlock code={popupStep2} />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">Step 3: Add the Tracking Script</h3>
-            <p className="text-gray-600 mb-3">Paste this script just before the closing `body` tag. Remember to replace `YOUR_USER/YOUR_EVENT` inside this script with your actual Calendly link.</p>
-            <CodeBlock code={popupStep3} />
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h3 className="text-xl font-semibold text-gray-700 mb-2">Instructions</h3>
+        <ol className="list-decimal list-inside space-y-3 text-gray-600">
+          <li>
+            On your external site editor (like systeme.io, Webflow, etc.), add a "Raw HTML" or "Custom Code" block to your booking page.
+          </li>
+          <li>
+            Copy the complete code block below and paste it into the Raw HTML block.
+          </li>
+          <li>
+            **Crucially**, update the <code className="font-mono bg-gray-200 px-1 rounded-sm">YOUR_USERNAME/YOUR_EVENT_TYPE</code> part of the script to your actual Calendly event link.
+          </li>
+        </ol>
+        
+        <div className="mt-6">
+          <div className="bg-gray-900 text-white p-4 rounded-md relative">
+            <button
+              onClick={() => handleCopy(inlineEmbedCode)}
+              className="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-md text-sm"
+            >
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+            <pre className="overflow-x-auto"><code>{inlineEmbedCode}</code></pre>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
