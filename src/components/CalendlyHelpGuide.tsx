@@ -11,7 +11,7 @@ const CodeBlock = ({ code }: { code: string }) => {
 
   return (
     <div className="relative">
-      <pre className="bg-gray-800 text-white rounded-md p-4 pr-16 overflow-x-auto text-sm">
+      <pre className="bg-gray-800 text-white rounded-md p-4 pr-16 text-sm whitespace-pre-wrap break-all">
         <code>{code}</code>
       </pre>
       <button
@@ -42,16 +42,53 @@ const CalendlyHelpGuide = () => {
   style="min-width:320px;height:700px;"
 ></div>`;
 
-  const inlineStep3 = `<script>
+  const inlineStep3 = `
+<script>
   // This script finds the 'ref' from the URL, saves it to a cookie,
   // and attaches it to your Calendly inline widget.
   try {
-    const setCookie = (n,v,d) => {let e="";if(d){let t=new Date;t.setTime(t.getTime()+24*d*60*60*1e3),e="; expires="+t.toUTCString()}document.cookie=n+"="+(v||"")+e+"; path=/"};
-    const getCookie = (n) => {let e=n+"=",t=document.cookie.split(";");for(let o=0;o<t.length;o++){let i=t[o];for(;" "=i.charAt(0);)i=i.substring(1,i.length);if(0==i.indexOf(e))return i.substring(e.length,i.length)}return null};
-    const ref=new URLSearchParams(window.location.search).get("ref");
-    if(ref){setCookie("mc_ref",ref,1)}const refCookie=getCookie("mc_ref");
-    if(refCookie){let e=document.getElementById("calendly-embed");if(e){let t=e.getAttribute("data-url");t.includes("ref=")||(e.setAttribute("data-url",t+(t.includes("?")?"&":"?")+"ref="+refCookie),window.Calendly&&window.Calendly.initInlineWidgets())}}
-  } catch (e) { console.error("Calendly tracking script error:", e) }
+    const setCookie = (name, value, days) => {
+      let expires = "";
+      if (days) {
+        const date = new Date();
+        date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+        expires = "; expires=" + date.toUTCString();
+      }
+      document.cookie = name + "=" + (value || "") + expires + "; path=/";
+    };
+
+    const getCookie = (name) => {
+      const nameEQ = name + "=";
+      const ca = document.cookie.split(';');
+      for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) == ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
+      }
+      return null;
+    };
+
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) {
+      setCookie("mc_ref", ref, 1);
+    }
+    
+    const refCookie = getCookie("mc_ref");
+    if (refCookie) {
+      const widget = document.getElementById("calendly-embed");
+      if (widget) {
+        const baseUrl = widget.getAttribute("data-url");
+        if (!baseUrl.includes("ref=")) {
+          widget.setAttribute("data-url", baseUrl + (baseUrl.includes("?") ? "&" : "?") + "ref=" + refCookie);
+          if (window.Calendly) {
+            window.Calendly.initInlineWidgets();
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Calendly tracking script error:", e);
+  }
 </script>`;
 
   // --- Code for Popup Button ---
@@ -65,18 +102,50 @@ const CalendlyHelpGuide = () => {
 <!-- You can style it or use your own, just ensure it has id="calendly-popup-button" -->
 <button id="calendly-popup-button">Book a Call</button>`;
   
-  const popupStep3 = `<script>
+  const popupStep3 = `
+<script>
   // This script finds the 'ref' from the URL, saves it to a cookie,
   // and uses it when the Calendly popup is opened.
   try {
-    const setCookie = (n,v,d) => {let e="";if(d){let t=new Date;t.setTime(t.getTime()+24*d*60*60*1e3),e="; expires="+t.toUTCString()}document.cookie=n+"="+(v||"")+e+"; path=/"};
-    const getCookie = (n) => {let e=n+"=",t=document.cookie.split(";");for(let o=0;o<t.length;o++){let i=t[o];for(;" "=i.charAt(0);)i=i.substring(1,i.length);if(0==i.indexOf(e))return i.substring(e.length,i.length)}return null};
-    const ref=new URLSearchParams(window.location.search).get("ref");
-    if(ref){setCookie("mc_ref",ref,1)}
-    const button=document.getElementById("calendly-popup-button");
-    if(button){button.addEventListener("click",()=>{let e=getCookie("mc_ref");Calendly.initPopupWidget({url:"https://calendly.com/YOUR_USER/YOUR_EVENT"+(e?"?ref="+e:"")})})}
-  } catch (e) { console.error("Calendly tracking script error:", e) }
-</script>`;
+    const setCookie = (name, value, days) => {
+      let expires = "";
+      if (days) {
+        const date = new Date();
+        date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+        expires = "; expires=" + date.toUTCString();
+      }
+      document.cookie = name + "=" + (value || "") + expires + "; path=/";
+    };
+
+    const getCookie = (name) => {
+      const nameEQ = name + "=";
+      const ca = document.cookie.split(';');
+      for (let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) == ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
+      }
+      return null;
+    };
+
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) {
+      setCookie("mc_ref", ref, 1);
+    }
+
+    const button = document.getElementById("calendly-popup-button");
+    if (button) {
+      button.addEventListener("click", () => {
+        const refCookie = getCookie("mc_ref");
+        Calendly.initPopupWidget({
+          url: "https://calendly.com/YOUR_USER/YOUR_EVENT" + (refCookie ? "?ref=" + refCookie : "")
+        });
+      });
+    }
+  } catch (e) {
+    console.error("Calendly tracking script error:", e);
+  }
+</script>\`;
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-soft border border-gray-100">
