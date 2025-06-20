@@ -31,19 +31,8 @@ async function handler(req, res, userId) {
       if (getError) throw getError;
 
       if (provider === 'calendly' && integration?.access_token) {
-        // Delete the webhook subscription in Calendly
-        if (integration.webhook_id) {
-          try {
-            await fetch(`https://api.calendly.com/webhook_subscriptions/${integration.webhook_id}`, {
-              method: 'DELETE',
-              headers: {
-                'Authorization': `Bearer ${integration.access_token}`,
-              },
-            });
-          } catch (e) {
-            console.error('Error deleting Calendly webhook:', e);
-          }
-        }
+        // We no longer delete the organization-wide webhook on user disconnect.
+        // We only revoke the token for the specific user.
 
         // Revoke the OAuth token
         try {
@@ -60,6 +49,7 @@ async function handler(req, res, userId) {
           });
         } catch (e) {
           console.error('Error revoking Calendly token:', e);
+          // We can still proceed to delete the local record
         }
       }
 
@@ -72,18 +62,13 @@ async function handler(req, res, userId) {
 
       if (deleteError) throw deleteError;
 
-      // Update webhook status
+      // We also remove the user-specific webhook status record.
       if (provider === 'calendly') {
         await supabaseAdmin
           .from('webhook_status')
-          .update({
-            is_active: false,
-            last_checked_at: new Date().toISOString(),
-            last_error: 'Disconnected by user',
-            webhook_id: null
-          })
-          .eq('provider', provider)
-          .eq('user_id', userId);
+          .delete()
+          .eq('user_id', userId)
+          .eq('provider', provider);
       }
 
       return res.status(200).json({ success: true });

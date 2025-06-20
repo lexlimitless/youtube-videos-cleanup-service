@@ -60,8 +60,10 @@ async function handler(req, res, userId) {
     const userData = await userResponse.json();
     const organizationUri = userData.resource.current_organization;
 
-    // Set up the webhook subscription with Calendly
+    let webhookId;
     const webhookUrl = `${process.env.API_URL}/webhooks/calendly`;
+    
+    // Attempt to create the webhook subscription
     const webhookResponse = await fetch('https://api.calendly.com/webhook_subscriptions', {
       method: 'POST',
       headers: {
@@ -76,14 +78,39 @@ async function handler(req, res, userId) {
       }),
     });
 
-    if (!webhookResponse.ok) {
+    if (webhookResponse.ok) {
+        const webhookData = await webhookResponse.json();
+        webhookId = webhookData.resource.uri;
+        console.log(`Successfully created new webhook: ${webhookId}`);
+    } else {
         const errorBody = await webhookResponse.json();
-        console.error('Calendly webhook setup failed:', errorBody);
-        throw new Error('Failed to set up Calendly webhook.');
+        // If the webhook already exists, find it and use its ID
+        if (errorBody.title === 'Already Exists') {
+            console.log('Webhook already exists, fetching existing subscription...');
+            const listResponse = await fetch(`https://api.calendly.com/webhook_subscriptions?organization=${organizationUri}&scope=organization`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+
+            if (!listResponse.ok) {
+                console.error('Failed to list existing webhooks:', await listResponse.json());
+                throw new Error('Failed to fetch existing webhook after "Already Exists" error.');
+            }
+
+            const listData = await listResponse.json();
+            const existingWebhook = listData.collection.find(hook => hook.url === webhookUrl);
+
+            if (!existingWebhook) {
+                console.error('CRITICAL: Could not find webhook by URL even though Calendly reported it exists.');
+                throw new Error('Webhook existence conflict.');
+            }
+            webhookId = existingWebhook.uri;
+            console.log(`Found existing webhook: ${webhookId}`);
+        } else {
+            // For any other error, fail the process
+            console.error('Calendly webhook setup failed:', errorBody);
+            throw new Error('Failed to set up Calendly webhook.');
+        }
     }
-    
-    const webhookData = await webhookResponse.json();
-    const webhookId = webhookData.resource.uri;
 
     // Save the integration details to the database
     await supabaseAdmin.from('user_integrations').upsert({
@@ -100,7 +127,7 @@ async function handler(req, res, userId) {
       is_active: true,
       webhook_id: webhookId,
       user_id: userId,
-    }, { onConflict: 'webhook_id' });
+    }, { onConflict: 'user_id, provider' });
 
     if (webhookStatusError) {
       console.error('Error saving webhook status:', webhookStatusError);
