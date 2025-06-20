@@ -92,7 +92,7 @@ const CalendlyHelpGuide = () => {
         <div>
           <h3 className="text-lg font-semibold text-gray-700 mb-2">Step 1: Add the Calendly Widget Script</h3>
           <p className="text-gray-600 mb-3">
-            First, ensure Calendly's main JavaScript file is included on your page. If it's already there, you can skip this. Place this code in the `<head>` section of your website's HTML.
+            First, ensure Calendly's main JavaScript file is included on your page. If it's already there, you can skip this. Place this code in the `head` section of your website's HTML.
           </p>
           <CodeBlock code={step1Code} />
         </div>
@@ -109,7 +109,7 @@ const CalendlyHelpGuide = () => {
         <div>
           <h3 className="text-lg font-semibold text-gray-700 mb-2">Step 3: Add the Tracking Script</h3>
           <p className="text-gray-600 mb-3">
-            Finally, copy and paste this script tag just before the closing `</body>` tag on your webpage. This script automatically finds the `ref` ID from the URL, saves it to a cookie, and attaches it to your Calendly widget for tracking.
+            Finally, copy and paste this script tag just before the closing `body` tag on your webpage. This script automatically finds the `ref` ID from the URL, saves it to a cookie, and attaches it to your Calendly widget for tracking.
           </p>
           <CodeBlock code={step3Code} />
         </div>
