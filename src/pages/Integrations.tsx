@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import CalendlyIntegration from '../components/CalendlyIntegration';
+import CalendlyHelpGuide from '../components/CalendlyHelpGuide';
 
 const integrations = [
   {
@@ -56,6 +57,32 @@ const integrations = [
 
 export default function Integrations() {
   const [search, setSearch] = useState('');
+  const [calendlyConnected, setCalendlyConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const checkCalendlyStatus = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/user/integrations');
+      const result = await response.json();
+      if (response.ok && Array.isArray(result.data)) {
+        const calendly = result.data.find(
+          (row: any) => row.provider === 'calendly' && row.is_connected
+        );
+        setCalendlyConnected(!!calendly);
+      } else {
+        setCalendlyConnected(false);
+      }
+    } catch (err) {
+      setCalendlyConnected(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    checkCalendlyStatus();
+  }, []);
 
   const filtered = integrations.filter(i =>
     i.name.toLowerCase().includes(search.toLowerCase())
@@ -90,18 +117,32 @@ export default function Integrations() {
             </div>
             <span className="text-gray-600 text-sm mb-2">{integration.description}</span>
             
+            {integration.key === 'calendly' && !isLoading && (
+                calendlyConnected ? (
+                  <span className="absolute top-4 right-4 bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full">Connected</span>
+                ) : (
+                  <span className="absolute top-4 right-4 bg-gray-100 text-gray-500 text-xs font-bold px-3 py-1 rounded-full">Not Connected</span>
+                )
+            )}
+
             {integration.status === 'coming' && (
               <span className="absolute top-4 right-4 bg-gray-100 text-gray-400 text-xs font-bold px-3 py-1 rounded-full">Coming Soon</span>
             )}
 
             {integration.key === 'calendly' && (
               <div className="w-full mt-auto pt-4">
-                <CalendlyIntegration />
+                <CalendlyIntegration isConnected={calendlyConnected} onConnectionChange={checkCalendlyStatus} />
               </div>
             )}
           </div>
         ))}
       </div>
+      
+      {calendlyConnected && (
+        <div className="mt-8">
+          <CalendlyHelpGuide />
+        </div>
+      )}
     </div>
   );
 } 
