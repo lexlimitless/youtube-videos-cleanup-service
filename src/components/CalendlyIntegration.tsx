@@ -7,6 +7,27 @@ interface IntegrationRow {
   is_connected: boolean;
 }
 
+// Helper function to generate a random string for the code verifier
+const generateRandomString = (length: number): string => {
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < length; i++) {
+        text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
+};
+
+// Helper function to generate the code challenge from the code verifier
+const generateCodeChallenge = async (verifier: string): Promise<string> => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(verifier);
+    const digest = await window.crypto.subtle.digest('SHA-256', data);
+    return btoa(String.fromCharCode(...new Uint8Array(digest)))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+};
+
 export default function CalendlyIntegration() {
   const [isConnected, setIsConnected] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -47,14 +68,25 @@ export default function CalendlyIntegration() {
     checkIntegrationStatus();
   }, [userId]);
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     setLoading(true);
-    const stateObj = {
-      user_id: userId,
-      nonce: Math.random().toString(36).substring(2)
-    };
-    const state = btoa(JSON.stringify(stateObj));
-    window.location.href = `/api/oauth/calendly/start?state=${state}`;
+    try {
+      const codeVerifier = generateRandomString(128);
+      const codeChallenge = await generateCodeChallenge(codeVerifier);
+      
+      sessionStorage.setItem('calendly_code_verifier', codeVerifier);
+      
+      const clientId = import.meta.env.VITE_CALENDLY_CLIENT_ID;
+      const redirectUri = `${window.location.origin}/integrations/calendly-callback`;
+      
+      const authUrl = `https://auth.calendly.com/oauth/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+      
+      window.location.href = authUrl;
+    } catch (error) {
+      console.error('Failed to start Calendly connection:', error);
+      alert('Could not initiate connection with Calendly. Please try again.');
+      setLoading(false);
+    }
   };
 
   const handleDisconnect = async () => {

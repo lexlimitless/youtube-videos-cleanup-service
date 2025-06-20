@@ -3,9 +3,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ClerkProvider, SignIn, SignUp, SignedIn, SignedOut } from '@clerk/clerk-react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
-import TrackableLinks from './pages/TrackableLinks';
+import TrackableLinks from './pages/TrackableLinks.tsx';
 import Redirect from './pages/redirect/[shortCode]';
-import Integrations from './pages/Integrations';
+import Integrations from './pages/Integrations.tsx';
+import QRCodeGenerator from './pages/QRCodeGenerator.tsx';
+import CalendlyCallback from './pages/CalendlyCallback.tsx';
 
 // Debug environment variables
 // console.log('Environment variables:', {
@@ -71,6 +73,7 @@ export default function App() {
             <Route path="links" element={<TrackableLinks />} />
             <Route path="attribution" element={<div>Attribution Settings</div>} />
             <Route path="integrations" element={<Integrations />} />
+            <Route path="integrations/calendly-callback" element={<CalendlyCallback />} />
             <Route path="settings" element={<div>Account Settings</div>} />
           </Route>
           {/* Public redirect route */}
