@@ -1,6 +1,8 @@
-# QR Generator Sales Tracker
+# QR Code Generator & Sales Tracker
 
-A modern web application for generating and managing QR codes for sales tracking. Built with React, TypeScript, and Vite.
+A web application to generate QR codes that track sales and user engagement.
+
+Testing auto-deployment from main branch.
 
 ## Features
 
