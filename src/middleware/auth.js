@@ -1,82 +1,46 @@
 import { createClerkClient } from '@clerk/backend';
 
+const clerk = createClerkClient({ 
+  secretKey: process.env.CLERK_SECRET_KEY,
+});
+
 export function withAuth(handler) {
   return async (req, res) => {
+    console.log(`[Auth Middleware] - Starting auth for: ${req.url}`);
     try {
-      const clerk = createClerkClient({ 
-        secretKey: process.env.CLERK_SECRET_KEY,
-        publishableKey: process.env.CLERK_PUBLISHABLE_KEY
-      });
+      // The Clerk SDK can extract the token from the headers automatically.
+      const claims = await clerk.verifyToken(req.headers.authorization?.split(' ')[1]);
       
-      // Convert Next.js req to a proper Request object
-      const url = new URL(req.url || '', `https://${req.headers.host || 'localhost'}`);
-      const request = new Request(url, {
-        method: req.method,
-        headers: req.headers,
-        body: req.body,
-      });
-      
-      const authResult = await clerk.authenticateRequest(request);
-      
-      // Extract userId from the JWT token
-      let userId;
-      if (authResult.token) {
-        try {
-          // Decode the JWT token (base64 decode the payload part)
-          const tokenParts = authResult.token.split('.');
-          if (tokenParts.length === 3) {
-            const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
-            userId = payload.sub; // 'sub' is the user ID in Clerk JWT tokens
-          }
-        } catch (decodeError) {
-          console.error('Error decoding JWT token:', decodeError);
-        }
+      if (!claims || !claims.sub) {
+        console.error('[Auth Middleware] - Verification failed: No claims or user ID found.');
+        return res.status(401).json({ error: 'Unauthorized: Invalid token' });
       }
       
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
+      const userId = claims.sub;
+      console.log(`[Auth Middleware] - Auth successful for user: ${userId}`);
+      
       return handler(req, res, userId);
+
     } catch (error) {
-      console.error('Auth middleware error:', error);
-      return res.status(500).json({ error: 'Internal server error' });
+      console.error(`[Auth Middleware] - CRITICALUTHENTICATION ERROR:`, error);
+      
+      // Provide a more specific error message if the token is expired
+      if (error.message?.includes('expired')) {
+        return res.status(401).json({ error: 'Unauthorized: Token has expired.' });
+      }
+      
+      return res.status(401).json({ error: 'Unauthorized' });
     }
   };
 }
 
-// Standalone function to extract userId from request
+// This standalone function is no longer needed with the simplified middleware
+// and can be removed if it's not used anywhere else.
+// For now, it will be left as is to avoid breaking other parts of the app.
 export async function getUserIdFromRequest(req) {
   try {
-    const clerk = createClerkClient({ 
-      secretKey: process.env.CLERK_SECRET_KEY,
-      publishableKey: process.env.CLERK_PUBLISHABLE_KEY
-    });
-    
-    // Convert Next.js req to a proper Request object
-    const url = new URL(req.url || '', `https://${req.headers.host || 'localhost'}`);
-    const request = new Request(url, {
-      method: req.method,
-      headers: req.headers,
-      body: req.body,
-    });
-    
-    const authResult = await clerk.authenticateRequest(request);
-    
-    // Extract userId from the JWT token
-    if (authResult.token) {
-      try {
-        // Decode the JWT token (base64 decode the payload part)
-        const tokenParts = authResult.token.split('.');
-        if (tokenParts.length === 3) {
-          const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
-          return payload.sub; // 'sub' is the user ID in Clerk JWT tokens
-        }
-      } catch (decodeError) {
-        console.error('Error decoding JWT token:', decodeError);
-      }
-    }
-    
-    return null;
+    const claims = await clerk.verifyToken(req.headers.authorization?.split(' ')[1]);
+    return claims?.sub || null;
   } catch (error) {
     console.error('Error getting userId from request:', error);
     return null;
