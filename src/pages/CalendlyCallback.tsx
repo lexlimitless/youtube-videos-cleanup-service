@@ -9,7 +9,7 @@ export default function CalendlyCallback() {
   const { getToken } = useAuth();
 
   useEffect(() => {
-    const exchangeCodeForToken = async () => {
+    const completeConnection = async () => {
       const params = new URLSearchParams(location.search);
       const code = params.get('code');
 
@@ -20,40 +20,14 @@ export default function CalendlyCallback() {
 
       const codeVerifier = sessionStorage.getItem('calendly_code_verifier');
       if (!codeVerifier) {
-        setError('Code verifier not found in session storage. Please try connecting again.');
+        setError('Security code verifier not found. Please try connecting again.');
         return;
       }
 
       try {
-        const payload = {
-          grant_type: 'authorization_code',
-          client_id: import.meta.env.VITE_CALENDLY_CLIENT_ID,
-          code: code,
-          redirect_uri: `${window.location.origin}/integrations/calendly-callback`,
-          code_verifier: codeVerifier,
-        };
-
-        console.log('Exchanging code for token with payload:', JSON.stringify(payload, null, 2));
-
-        // Exchange authorization code for access token
-        const tokenResponse = await fetch('https://auth.calendly.com/oauth/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-
-        if (!tokenResponse.ok) {
-            const errorBody = await tokenResponse.json();
-            throw new Error(errorBody.error_description || 'Failed to fetch access token from Calendly');
-        }
-
-        const tokenData = await tokenResponse.json();
-        const accessToken = tokenData.access_token;
-        
-        // Get Clerk token to authenticate with our backend
         const clerkToken = await getToken();
 
-        // Send the access token to our backend to complete the integration
+        // Send the authorization code and verifier to our secure backend
         const backendResponse = await fetch('/api/user/integrations/connect', {
             method: 'POST',
             headers: {
@@ -62,31 +36,32 @@ export default function CalendlyCallback() {
             },
             body: JSON.stringify({
                 provider: 'calendly',
-                accessToken: accessToken,
+                code: code,
+                codeVerifier: codeVerifier,
             }),
         });
 
         if (!backendResponse.ok) {
-            throw new Error('Failed to save integration details to the backend.');
+            const errorBody = await backendResponse.json();
+            throw new Error(errorBody.error || 'Failed to complete connection with the backend.');
         }
 
-        // Clean up and redirect
         sessionStorage.removeItem('calendly_code_verifier');
         navigate('/integrations');
 
       } catch (err: any) {
         setError(err.message);
-        console.error('Error during token exchange or backend update:', err);
+        console.error('Error completing Calendly connection:', err);
       }
     };
 
-    exchangeCodeForToken();
+    completeConnection();
   }, [location, navigate, getToken]);
 
   return (
     <div className="flex flex-col items-center justify-center h-screen">
       {error ? (
-        <div className="text-red-500 text-center">
+        <div className="text-red-500 text-center p-4">
           <h2 className="text-xl font-bold mb-2">Error Connecting to Calendly</h2>
           <p>{error}</p>
           <button onClick={() => navigate('/integrations')} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
@@ -95,7 +70,7 @@ export default function CalendlyCallback() {
         </div>
       ) : (
         <div className="text-center">
-          <h2 className="text-xl font-semibold">Connecting to Calendly...</h2>
+          <h2 className="text-xl font-semibold">Finalizing Connection...</h2>
           <p className="mt-2">Please wait while we securely set up your integration.</p>
         </div>
       )}

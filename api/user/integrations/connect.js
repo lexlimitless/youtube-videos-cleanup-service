@@ -7,17 +7,43 @@ async function handler(req, res, userId) {
   }
 
   try {
-    const { provider, accessToken } = req.body;
+    const { provider, code, codeVerifier } = req.body;
 
-    if (provider !== 'calendly' || !accessToken) {
-      return res.status(400).json({ error: 'Invalid provider or missing access token' });
+    if (provider !== 'calendly' || !code || !codeVerifier) {
+      return res.status(400).json({ error: 'Invalid provider or missing authorization code/verifier' });
     }
+
+    // Exchange authorization code for access token, now including the client_secret
+    const tokenResponse = await fetch('https://auth.calendly.com/oauth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            grant_type: 'authorization_code',
+            client_id: process.env.VITE_CALENDLY_CLIENT_ID,
+            client_secret: process.env.CALENDLY_CLIENT_SECRET,
+            code: code,
+            redirect_uri: `${process.env.VITE_API_URL}/integrations/calendly-callback`,
+            code_verifier: codeVerifier,
+        }),
+    });
+
+    if (!tokenResponse.ok) {
+        const errorBody = await tokenResponse.json();
+        console.error('Failed to get token from Calendly:', errorBody);
+        return res.status(401).json({ error: 'Failed to authenticate with Calendly.' });
+    }
+
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
 
     // Use the access token to get user's organization URI from Calendly
     const userResponse = await fetch('https://api.calendly.com/users/me', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!userResponse.ok) throw new Error('Failed to fetch user data from Calendly');
+    if (!userResponse.ok) {
+        console.error('Failed to fetch Calendly user data');
+        throw new Error('Failed to fetch user data from Calendly');
+    }
     
     const userData = await userResponse.json();
     const organizationUri = userData.resource.current_organization;
