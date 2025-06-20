@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import CalendlyIntegration from '../components/CalendlyIntegration';
 import CalendlyHelpGuide from '../components/CalendlyHelpGuide';
 
@@ -59,11 +60,24 @@ export default function Integrations() {
   const [search, setSearch] = useState('');
   const [calendlyConnected, setCalendlyConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const { getToken } = useAuth();
 
   const checkCalendlyStatus = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/user/integrations');
+      const token = await getToken();
+      if (!token) {
+        // Handle case where user is not authenticated
+        setIsLoading(false);
+        setCalendlyConnected(false);
+        return;
+      }
+
+      const response = await fetch('/api/user/integrations', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
       const result = await response.json();
       if (response.ok && Array.isArray(result.data)) {
         const calendly = result.data.find(
