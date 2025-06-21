@@ -1,71 +1,52 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 
-const CodeBlock = ({ code }: { code: string }) => {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
-  };
-
+const CodeBlock = ({ code, language }: { code: string, language?: string }) => {
   return (
-    <div className="relative">
-      <pre className="bg-gray-800 text-white rounded-md p-4 pr-16 text-sm whitespace-pre-wrap break-all">
-        <code>{code}</code>
+    <div className="relative my-4">
+      <pre className="bg-gray-800 text-white rounded-md p-4 text-sm whitespace-pre-wrap break-all">
+        <code className={`language-${language}`}>{code}</code>
       </pre>
-      <button
-        onClick={handleCopy}
-        className="absolute top-2 right-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1 rounded"
-      >
-        {copied ? 'Copied!' : 'Copy'}
-      </button>
     </div>
   );
 };
 
 const CalendlyHelpGuide = () => {
-  const [activeTab, setActiveTab] = useState('inline');
   const [copied, setCopied] = useState(false);
 
-  // This is the single, complete code block for the user to copy.
-  // It includes the debugging console logs.
-  const inlineEmbedCode = `<!-- Calendly inline widget begin -->
-<div id="calendly-embed" style="min-width:320px;height:700px;"></div>
-<script type="text/javascript" src="https://assets.calendly.com/assets/external/widget.js" async></script>
+  const trackingScript = `<!-- QR-Generator Tracking Script for Calendly -->
 <script>
-  console.log("--- Calendly Embed Script Initialized ---");
   try {
-    const urlParams = new URLSearchParams(window.location.search);
-    const ref = urlParams.get('ref');
-    console.log("Extracted 'ref' parameter:", ref);
+    console.log("QR-Generator: Calendly tracking script initializing.");
+    const ref = new URLSearchParams(window.location.search).get("ref");
 
-    // IMPORTANT: Replace with your actual Calendly link below
-    const calendlyBaseUrl = "https://calendly.com/YOUR_USERNAME/YOUR_EVENT_TYPE";
-
-    let finalUrl = calendlyBaseUrl;
     if (ref) {
-      finalUrl = calendlyBaseUrl + "?ref=" + ref;
-      console.log("Constructed Calendly URL with ref:", finalUrl);
-    } else {
-      console.warn("Calendly Embed Script: 'ref' parameter not found in the URL. Widget will not be personalized for tracking.");
-    }
+      console.log("QR-Generator: Found tracking ref:", ref);
+      // Find the standard Calendly inline widget on your page.
+      const widget = document.querySelector('.calendly-inline-widget');
 
-    window.onload = function() {
-      console.log("Window loaded, initializing Calendly widget.");
-      Calendly.initInlineWidget({
-        url: finalUrl,
-        parentElement: document.getElementById('calendly-embed'),
-        prefill: {},
-        utm: {}
-      });
-      console.log("Calendly.initInlineWidget function called for URL:", finalUrl);
+      if (widget) {
+        const baseUrl = widget.getAttribute('data-url');
+        
+        // Only add the 'ref' if the URL exists and doesn't already have one.
+        if (baseUrl && !baseUrl.includes('ref=')) {
+          // Add the ref parameter correctly, handling existing query params.
+          const newUrl = baseUrl + (baseUrl.includes('?') ? '&' : '?') + 'ref=' + ref;
+          widget.setAttribute('data-url', newUrl);
+          
+          console.log('QR-Generator: Successfully added ref. New Calendly URL:', newUrl);
+        } else if (baseUrl) {
+          console.log("QR-Generator: A 'ref' parameter already exists on the widget. No changes made.");
+        }
+      } else {
+        console.warn('QR-Generator: Could not find a Calendly widget with class ".calendly-inline-widget" to attach tracking to.');
+      }
+    } else {
+      console.log("QR-Generator: No 'ref' parameter in URL. No tracking will be applied.");
     }
   } catch (e) {
-    console.error("--- Calendly Embed Script FATAL ERROR ---", e);
+    console.error("QR-Generator: Calendly tracking script fatal error:", e);
   }
-</script>
-<!-- Calendly inline widget end -->`;
+</script>`;
 
   const handleCopy = (code: string) => {
     navigator.clipboard.writeText(code);
@@ -75,39 +56,38 @@ const CalendlyHelpGuide = () => {
 
   return (
     <div className="bg-gray-50 p-6 rounded-lg shadow-inner">
-      <h2 className="text-2xl font-bold text-gray-800 mb-4">Calendly Integration Guide</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-4">Track Your Existing Calendly Embed</h2>
       <p className="mb-6 text-gray-600">
-        To track bookings, you need to add a small script to your external booking page. This script finds the unique <code className="font-mono bg-gray-200 px-1 rounded-sm">ref</code> code from the URL and attaches it to your Calendly booking link.
+        This script works with your **pre-existing** Calendly embed. It finds the tracking <code className="font-mono bg-gray-200 px-1 rounded-sm">ref</code> from the page URL and attaches it to your widget.
       </p>
 
       <div className="bg-white p-6 rounded-lg shadow">
         <h3 className="text-xl font-semibold text-gray-700 mb-2">Instructions</h3>
-        <ol className="list-decimal list-inside space-y-3 text-gray-600">
+        <ol className="list-decimal list-inside space-y-4 text-gray-600">
           <li>
-            On your external site editor (like systeme.io, Webflow, etc.), add a "Raw HTML" or "Custom Code" block to your booking page.
+            On your external website, you should already have the code provided by Calendly to embed your booking page. It typically looks like this:
+            <CodeBlock language="html" code={`<!-- Calendly inline widget begin -->\n<div class="calendly-inline-widget" data-url="https://calendly.com/your-event/..."></div>\n<script type="text/javascript" src="https://assets.calendly.com/assets/external/widget.js" async></script>\n<!-- Calendly inline widget end -->`} />
           </li>
           <li>
-            Copy the complete code block below and paste it into the Raw HTML block.
-          </li>
-          <li>
-            **Crucially**, update the <code className="font-mono bg-gray-200 px-1 rounded-sm">YOUR_USERNAME/YOUR_EVENT_TYPE</code> part of the script to your actual Calendly event link.
+            Copy the tracking script below and paste it into your page's HTML. **The best place to paste it is just before the closing <code className="font-mono bg-gray-200 px-1 rounded-sm">&lt;/body&gt;</code> tag.**
           </li>
         </ol>
         
         <div className="mt-6">
+            <h3 className="text-xl font-semibold text-gray-700 mb-2">Tracking Script</h3>
           <div className="bg-gray-900 text-white p-4 rounded-md relative">
             <button
-              onClick={() => handleCopy(inlineEmbedCode)}
+              onClick={() => handleCopy(trackingScript)}
               className="absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white font-semibold py-1 px-3 rounded-md text-sm"
             >
               {copied ? 'Copied!' : 'Copy'}
             </button>
-            <pre className="overflow-x-auto"><code>{inlineEmbedCode}</code></pre>
+            <pre className="overflow-x-auto"><code>{trackingScript}</code></pre>
           </div>
         </div>
       </div>
     </div>
   );
-};
+}
 
 export default CalendlyHelpGuide; 
