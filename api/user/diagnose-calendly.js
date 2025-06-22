@@ -14,12 +14,20 @@ const handler = async (req, res) => {
         return res.status(404).json({ error: 'Calendly integration not found or token expired.' });
       }
 
-      const { data: integrationData } = await supabaseAdmin.from('user_integrations').select('calendly_organization_uri, calendly_user_uri').eq('user_id', userId).single();
-      const organizationUri = integrationData?.calendly_organization_uri;
-      const userUri = integrationData?.calendly_user_uri;
+      const { data: integrationData, error: dbError } = await supabaseAdmin
+        .from('user_integrations')
+        .select('calendly_organization_uri, calendly_user_uri, webhook_id')
+        .eq('user_id', userId)
+        .single();
+
+      if (dbError) {
+        return res.status(500).json({ error: 'Failed to fetch local integration data.', details: dbError });
+      }
+
+      const { calendly_organization_uri: organizationUri, calendly_user_uri: userUri, webhook_id } = integrationData;
 
       if (!organizationUri || !userUri) {
-        return res.status(500).json({ error: 'Could not find Calendly organization or user URI.' });
+        return res.status(500).json({ error: 'Could not find Calendly organization or user URI in the database.' });
       }
       
       const webhookCheckUrl = `https://api.calendly.com/webhook_subscriptions?organization=${organizationUri}&user=${userUri}&scope=user`;
@@ -33,8 +41,9 @@ const handler = async (req, res) => {
       console.log('--- [DIAGNOSTIC] END OF REPORT ---');
 
       return res.status(200).json({
-        message: 'Diagnostic check complete. See Vercel logs for webhook subscription details.',
-        subscriptions: webhookData.collection,
+        message: 'Diagnostic check complete. See Vercel logs for full webhook subscription details.',
+        local_webhook_id: webhook_id,
+        calendly_subscriptions: webhookData.collection,
       });
     } catch (error) {
       console.error('[DIAGNOSTIC] An unexpected error occurred:', error);

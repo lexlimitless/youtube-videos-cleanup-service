@@ -114,8 +114,22 @@ export default function Integrations() {
       const data = await response.json();
 
       if (response.ok) {
-        setDiagnosticResult('Diagnostic complete! See the Vercel logs for the full report. A summary is also available in your browser\'s console.');
-        console.log('--- Calendly Diagnostic Summary ---', data.subscriptions);
+        let resultText = `Check complete. Found ${data.calendly_subscriptions.length} webhook(s) on Calendly.`;
+        resultText += `\n\nDB says our webhook ID is: ${data.local_webhook_id || 'Not Found'}`;
+        
+        const ourWebhook = data.calendly_subscriptions.find((sub: any) => sub.uri.includes(data.local_webhook_id));
+        
+        if (ourWebhook) {
+          resultText += `\n\nFound our webhook on Calendly: ${ourWebhook.uri}`;
+          resultText += `\nState: ${ourWebhook.state}`;
+          resultText += `\nCallback URL: ${ourWebhook.callback_url}`;
+        } else {
+          resultText += `\n\nOur webhook was NOT found on Calendly. Please try disconnecting and reconnecting.`;
+        }
+
+        setDiagnosticResult(resultText);
+        console.log('Diagnostic data:', data);
+
       } else {
         setDiagnosticResult(`Error running diagnostic: ${data.error || 'Unknown error'}`);
         console.error('Diagnostic failed:', data);

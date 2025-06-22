@@ -1,3 +1,4 @@
+console.log('--- CALENDLY WEBHOOK HANDLER INITIATED ---');
 import { supabaseAdmin } from '../../../../src/server/supabase-admin.js';
 
 const SIGNING_KEY = process.env.CALENDLY_WEBHOOK_SIGNING_KEY;
