@@ -1,7 +1,9 @@
 import { supabaseAdmin } from '../../../src/server/supabase-admin.js';
 import { withAuth } from '../../../src/middleware/auth.js';
 
-async function handler(req, res, userId) {
+async function handler(req, res) {
+  const { userId } = req.auth;
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -51,11 +53,14 @@ async function handler(req, res, userId) {
     if (tokenData.access_token) {
       const newExpiresAt = new Date(new Date().getTime() + tokenData.expires_in * 1000);
 
-      const { data: userData, error: userError } = await fetch('https://api.calendly.com/v2/users/me', {
+      const userResponse = await fetch('https://api.calendly.com/v2/users/me', {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
-      }).then(res => res.json());
+      });
 
-      if (userError || !userData.resource) {
+      const userData = await userResponse.json();
+
+      if (!userResponse.ok || !userData.resource) {
+        console.error('Failed to fetch Calendly user details:', userData);
         throw new Error('Could not fetch Calendly user details.');
       }
       
