@@ -14,11 +14,11 @@ const handler = async (req, res) => {
         return res.status(404).json({ error: 'Calendly integration not found or token expired.' });
       }
 
-      const { data: integrationData } = await supabaseAdmin.from('user_integrations').select('calendly_organization_uri').eq('user_id', userId).single();
-      const organizationUri = integrationData?.calendly_organization_uri;
-      if(!organizationUri) return res.status(500).json({ error: 'Could not find Calendly organization URI.' });
+      const { data: integrationData } = await supabaseAdmin.from('user_integrations').select('calendly_user_uri').eq('user_id', userId).single();
+      const userUri = integrationData?.calendly_user_uri;
+      if(!userUri) return res.status(500).json({ error: 'Could not find Calendly user URI.' });
       
-      const webhookCheckUrl = `https://api.calendly.com/v2/webhook_subscriptions?organization=${organizationUri}&scope=organization`;
+      const webhookCheckUrl = `https://api.calendly.com/webhook_subscriptions?user=${userUri}&scope=user`;
       const webhookRes = await fetch(webhookCheckUrl, { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` } });
       const webhookData = await webhookRes.json();
 
@@ -44,12 +44,12 @@ const handler = async (req, res) => {
       const accessToken = await getCalendlyAccessToken(userId);
       if (!accessToken) return res.status(404).json({ error: 'Calendly integration not found or token expired.' });
 
-      const { data: integrationData } = await supabaseAdmin.from('user_integrations').select('calendly_organization_uri').eq('user_id', userId).single();
-      const organizationUri = integrationData?.calendly_organization_uri;
-      if (!organizationUri) return res.status(500).json({ error: 'Could not find Calendly organization URI.' });
+      const { data: integrationData } = await supabaseAdmin.from('user_integrations').select('calendly_user_uri').eq('user_id', userId).single();
+      const userUri = integrationData?.calendly_user_uri;
+      if (!userUri) return res.status(500).json({ error: 'Could not find Calendly user URI.' });
 
       // 1. List all webhooks
-      const listUrl = `https://api.calendly.com/v2/webhook_subscriptions?organization=${organizationUri}&scope=organization`;
+      const listUrl = `https://api.calendly.com/webhook_subscriptions?user=${userUri}&scope=user`;
       const listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
       const listData = await listRes.json();
       if (!listRes.ok) throw new Error('Failed to list existing webhooks before deleting.');
