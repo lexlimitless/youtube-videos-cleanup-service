@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const CodeBlock = ({ code, language }: { code: string, language?: string }) => {
   return (
@@ -16,35 +16,19 @@ const CalendlyHelpGuide = () => {
   const trackingScript = `<!-- QR-Generator Tracking Script for Calendly -->
 <script>
   try {
-    console.log("QR-Generator: Calendly tracking script initializing.");
     const ref = new URLSearchParams(window.location.search).get("ref");
-
     if (ref) {
-      console.log("QR-Generator: Found tracking ref:", ref);
-      // Find the standard Calendly inline widget on your page.
       const widget = document.querySelector('.calendly-inline-widget');
-
       if (widget) {
         const baseUrl = widget.getAttribute('data-url');
-        
-        // Use 'utm_content' as the parameter name for Calendly to recognize.
         if (baseUrl && !baseUrl.includes('utm_content=')) {
-          // Add the ref as utm_content, handling existing query params.
           const newUrl = baseUrl + (baseUrl.includes('?') ? '&' : '?') + 'utm_content=' + ref;
           widget.setAttribute('data-url', newUrl);
-          
-          console.log('QR-Generator: Successfully added tracking. New Calendly URL:', newUrl);
-        } else if (baseUrl) {
-          console.log("QR-Generator: A 'utm_content' parameter already exists on the widget. No changes made.");
         }
-      } else {
-        console.warn('QR-Generator: Could not find a Calendly widget with class ".calendly-inline-widget" to attach tracking to.');
       }
-    } else {
-      console.log("QR-Generator: No 'ref' parameter in URL. No tracking will be applied.");
     }
   } catch (e) {
-    console.error("QR-Generator: Calendly tracking script fatal error:", e);
+    // Errors are silenced in production
   }
 </script>`;
 
@@ -53,6 +37,50 @@ const CalendlyHelpGuide = () => {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  useEffect(() => {
+    // This script is designed to be robust and not block page rendering.
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const ref = urlParams.get('ref');
+
+      if (ref) {
+        const observer = new MutationObserver((mutationsList, observer) => {
+          for (const mutation of mutationsList) {
+            if (mutation.type === 'childList') {
+              const calendlyWidgets = document.querySelectorAll('.calendly-inline-widget');
+              calendlyWidgets.forEach(widget => {
+                const widgetUrl = widget.getAttribute('data-url');
+                if (widgetUrl) {
+                  const url = new URL(widgetUrl);
+                  if (!url.searchParams.has('utm_content')) {
+                    url.searchParams.set('utm_content', ref);
+                    const newUrl = url.toString();
+                    widget.setAttribute('data-url', newUrl);
+                    // To force a reload of the iframe with the new URL
+                    widget.innerHTML = ''; 
+                    const iframe = document.createElement('iframe');
+                    iframe.src = newUrl;
+                    iframe.frameBorder = '0';
+                    iframe.style.width = '100%';
+                    iframe.style.height = '100%';
+                    widget.appendChild(iframe);
+                  }
+                }
+              });
+            }
+          }
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        // Cleanup observer on component unmount
+        return () => observer.disconnect();
+      }
+    } catch (error) {
+      // Don't log errors to the console in production
+    }
+  }, []);
 
   return (
     <div className="bg-gray-50 p-6 rounded-lg shadow-inner">

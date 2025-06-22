@@ -16,8 +16,6 @@ export default async function handler(req, res) {
   }
 
   console.log('--- Calendly Webhook Received ---');
-  console.log('Headers:', req.headers);
-  console.log('Body:', req.body);
 
   if (!verifySignature(req)) {
     console.error('Invalid Calendly webhook signature');
@@ -43,7 +41,7 @@ export default async function handler(req, res) {
     }
     
     if (!trackingRef) {
-        console.log('No tracking ref (utm_content) found in webhook. Skipping call attribution.');
+        // This is a normal event, not an error. A user may book without a tracking link.
         return res.status(200).json({ received: true, message: 'No tracking ref.'});
     }
 

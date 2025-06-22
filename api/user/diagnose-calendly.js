@@ -36,10 +36,6 @@ const handler = async (req, res) => {
 
       if (!webhookRes.ok) return res.status(500).json({ error: 'Failed to fetch webhook subscriptions from Calendly.', details: webhookData });
 
-      console.log('--- [DIAGNOSTIC] CALENDLY WEBHOOK SUBSCRIPTIONS ---');
-      console.log(JSON.stringify(webhookData, null, 2));
-      console.log('--- [DIAGNOSTIC] END OF REPORT ---');
-
       return res.status(200).json({
         message: 'Diagnostic check complete. See Vercel logs for full webhook subscription details.',
         local_webhook_id: webhook_id,
@@ -77,7 +73,6 @@ const handler = async (req, res) => {
 
       // 2. Delete each webhook
       const deletionPromises = listData.collection.map(webhook => {
-        console.log(`[DIAGNOSTIC-DELETE] Deleting webhook: ${webhook.uri}`);
         return fetch(webhook.uri, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${accessToken}` },

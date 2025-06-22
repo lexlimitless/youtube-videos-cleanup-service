@@ -130,7 +130,6 @@ export default function Integrations() {
         }
 
         setDiagnosticResult(resultText);
-        console.log('Diagnostic data:', data);
 
       } else {
         setDiagnosticResult(`Error running diagnostic: ${data.error || 'Unknown error'}`);

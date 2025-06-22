@@ -14,7 +14,6 @@ async function handler(req, res) {
 
     if (error) return res.status(500).json({ error: error.message });
     
-    console.log('GET integrations for user:', userId, 'Data:', data);
     return res.status(200).json({ data });
   }
 
@@ -74,7 +73,6 @@ async function handler(req, res) {
           },
           body: `token=${accessToken}`
         });
-        console.log(`Successfully revoked Calendly token for user ${userId}`);
       } catch (revokeError) {
         console.error(`Error revoking Calendly token for user ${userId}, but proceeding with disconnect.`, revokeError);
       }
