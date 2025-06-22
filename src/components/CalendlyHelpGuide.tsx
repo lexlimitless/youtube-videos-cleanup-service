@@ -27,15 +27,15 @@ const CalendlyHelpGuide = () => {
       if (widget) {
         const baseUrl = widget.getAttribute('data-url');
         
-        // Only add the 'ref' if the URL exists and doesn't already have one.
-        if (baseUrl && !baseUrl.includes('ref=')) {
-          // Add the ref parameter correctly, handling existing query params.
-          const newUrl = baseUrl + (baseUrl.includes('?') ? '&' : '?') + 'ref=' + ref;
+        // Use 'utm_content' as the parameter name for Calendly to recognize.
+        if (baseUrl && !baseUrl.includes('utm_content=')) {
+          // Add the ref as utm_content, handling existing query params.
+          const newUrl = baseUrl + (baseUrl.includes('?') ? '&' : '?') + 'utm_content=' + ref;
           widget.setAttribute('data-url', newUrl);
           
-          console.log('QR-Generator: Successfully added ref. New Calendly URL:', newUrl);
+          console.log('QR-Generator: Successfully added tracking. New Calendly URL:', newUrl);
         } else if (baseUrl) {
-          console.log("QR-Generator: A 'ref' parameter already exists on the widget. No changes made.");
+          console.log("QR-Generator: A 'utm_content' parameter already exists on the widget. No changes made.");
         }
       } else {
         console.warn('QR-Generator: Could not find a Calendly widget with class ".calendly-inline-widget" to attach tracking to.');
@@ -57,8 +57,11 @@ const CalendlyHelpGuide = () => {
   return (
     <div className="bg-gray-50 p-6 rounded-lg shadow-inner">
       <h2 className="text-2xl font-bold text-gray-800 mb-4">Track Your Existing Calendly Embed</h2>
-      <p className="mb-6 text-gray-600">
-        This script works with your **pre-existing** Calendly embed. It finds the tracking <code className="font-mono bg-gray-200 px-1 rounded-sm">ref</code> from the page URL and attaches it to your widget.
+       <p className="mb-2 text-gray-600">
+        This new script uses a more reliable method to track bookings directly from the browser, bypassing Calendly's webhooks.
+      </p>
+      <p className="mb-6 text-gray-500 text-sm">
+        It works with your **pre-existing** Calendly embed by listening for the booking confirmation event.
       </p>
 
       <div className="bg-white p-6 rounded-lg shadow">
@@ -69,12 +72,12 @@ const CalendlyHelpGuide = () => {
             <CodeBlock language="html" code={`<!-- Calendly inline widget begin -->\n<div class="calendly-inline-widget" data-url="https://calendly.com/your-event/..."></div>\n<script type="text/javascript" src="https://assets.calendly.com/assets/external/widget.js" async></script>\n<!-- Calendly inline widget end -->`} />
           </li>
           <li>
-            Copy the tracking script below and paste it into your page's HTML. **The best place to paste it is just before the closing <code className="font-mono bg-gray-200 px-1 rounded-sm">&lt;/body&gt;</code> tag.**
+            Copy the tracking script below and paste it into your page's HTML. This script will find your Calendly widget and add the necessary tracking parameter. The best place for it is just before the closing <code className="font-mono bg-gray-200 px-1 rounded-sm">&lt;/body&gt;</code> tag.
           </li>
         </ol>
         
         <div className="mt-6">
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">Tracking Script</h3>
+            <h3 className="text-xl font-semibold text-gray-700 mb-2">New Tracking Script</h3>
           <div className="bg-gray-900 text-white p-4 rounded-md relative">
             <button
               onClick={() => handleCopy(trackingScript)}
