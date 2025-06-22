@@ -61,6 +61,8 @@ export default function Integrations() {
   const [calendlyConnected, setCalendlyConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const { getToken } = useAuth();
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [diagnosticResult, setDiagnosticResult] = useState('');
 
   const checkCalendlyStatus = async () => {
     setIsLoading(true);
@@ -91,6 +93,40 @@ export default function Integrations() {
       setCalendlyConnected(false);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleRunDiagnostic = async () => {
+    setIsDiagnosing(true);
+    setDiagnosticResult('Running diagnostics... Please check the Vercel logs for detailed output.');
+
+    try {
+      const token = await getToken();
+      const response = await fetch('/api/user/diagnose-calendly', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setDiagnosticResult('Diagnostic complete! See the Vercel logs for the full report. A summary is also available in your browser\'s console.');
+        console.log('--- Calendly Diagnostic Summary ---', data.subscriptions);
+      } else {
+        setDiagnosticResult(`Error running diagnostic: ${data.error || 'Unknown error'}`);
+        console.error('Diagnostic failed:', data);
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        setDiagnosticResult(`An unexpected error occurred: ${error.message}`);
+      } else {
+        setDiagnosticResult('An unexpected error occurred.');
+      }
+      console.error('Unexpected diagnostic error:', error);
+    } finally {
+      setIsDiagnosing(false);
     }
   };
 
@@ -150,6 +186,25 @@ export default function Integrations() {
             )}
           </div>
         ))}
+      </div>
+      
+      <div className="bg-white p-6 rounded-lg shadow-md mb-8">
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">Calendly Diagnostic Tool</h2>
+        <p className="text-gray-600 mb-4">
+          If you're having trouble with Calendly tracking, click this button to check the status of your webhook subscription. The detailed results will be printed in your Vercel deployment logs.
+        </p>
+        <button
+          onClick={handleRunDiagnostic}
+          disabled={isDiagnosing}
+          className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400"
+        >
+          {isDiagnosing ? 'Running...' : 'Run Calendly Diagnostic'}
+        </button>
+        {diagnosticResult && (
+          <div className="mt-4 p-4 bg-gray-100 rounded">
+            <p className="text-sm text-gray-700">{diagnosticResult}</p>
+          </div>
+        )}
       </div>
       
       {calendlyConnected && (
