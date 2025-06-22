@@ -62,7 +62,8 @@ export default function Integrations() {
   const [isLoading, setIsLoading] = useState(true);
   const { getToken } = useAuth();
   const [isDiagnosing, setIsDiagnosing] = useState(false);
-  const [diagnosticResult, setDiagnosticResult] = useState('');
+  const [diagnosticResult, setDiagnosticResult] = useState<string | null>(null);
+  const [diagnosticCallbackUrl, setDiagnosticCallbackUrl] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteResult, setDeleteResult] = useState('');
 
@@ -100,7 +101,8 @@ export default function Integrations() {
 
   const handleRunDiagnostic = async () => {
     setIsDiagnosing(true);
-    setDiagnosticResult('Running diagnostics... Please check the Vercel logs for detailed output.');
+    setDiagnosticResult(null);
+    setDiagnosticCallbackUrl(null);
 
     try {
       const token = await getToken();
@@ -117,12 +119,12 @@ export default function Integrations() {
         let resultText = `Check complete. Found ${data.calendly_subscriptions.length} webhook(s) on Calendly.`;
         resultText += `\n\nDB says our webhook ID is: ${data.local_webhook_id || 'Not Found'}`;
         
-        const ourWebhook = data.calendly_subscriptions.find((sub: any) => sub.uri.includes(data.local_webhook_id));
+        const ourWebhook = data.calendly_subscriptions.find((sub: any) => data.local_webhook_id && sub.uri.includes(data.local_webhook_id));
         
         if (ourWebhook) {
           resultText += `\n\nFound our webhook on Calendly: ${ourWebhook.uri}`;
           resultText += `\nState: ${ourWebhook.state}`;
-          resultText += `\nCallback URL: ${ourWebhook.callback_url}`;
+          setDiagnosticCallbackUrl(ourWebhook.callback_url);
         } else {
           resultText += `\n\nOur webhook was NOT found on Calendly. Please try disconnecting and reconnecting.`;
         }
@@ -256,8 +258,16 @@ export default function Integrations() {
           </button>
         </div>
         {diagnosticResult && (
-          <div className="mt-4 p-4 bg-gray-100 rounded">
-            <p className="text-sm text-gray-700">{diagnosticResult}</p>
+          <div className="mt-4 p-4 bg-gray-100 rounded space-y-2">
+            <pre className="text-sm text-gray-700 whitespace-pre-wrap">{diagnosticResult}</pre>
+            {diagnosticCallbackUrl && (
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Callback URL on Calendly:</p>
+                <code className="block bg-gray-200 p-2 rounded text-xs text-black break-all">
+                  {diagnosticCallbackUrl}
+                </code>
+              </div>
+            )}
           </div>
         )}
         {deleteResult && (
