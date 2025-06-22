@@ -4,6 +4,10 @@
     {
       "source": "/redirect/:id",
       "destination": "/api/redirect/:id"
+    },
+    {
+      "source": "/((?!api/|assets/).*)",
+      "destination": "/index.html"
     }
   ],
   "buildCommand": "yarn build",
