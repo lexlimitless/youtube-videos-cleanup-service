@@ -3,7 +3,7 @@
 -- Add the new columns with nullable constraints first
 ALTER TABLE public.user_integrations
 ADD COLUMN provider_refresh_token TEXT,
-ADD COLUMN provider_token_expires_at TIMESTAMPOF;
+ADD COLUMN provider_token_expires_at TIMESTAMP WITH TIME ZONE;
 
 -- Rename the existing access_token column for consistency
 ALTER TABLE public.user_integrations
