@@ -6,7 +6,8 @@ import {
   Settings, 
   Share2, 
   LogOut,
-  Puzzle
+  Puzzle,
+  Activity,
 } from 'lucide-react';
 import { useClerk } from '@clerk/clerk-react';
 import { useNavigate } from 'react-router-dom';
@@ -15,6 +16,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'QR Codes', href: '/qr-codes', icon: QrCode },
   { name: 'Trackable Links', href: '/links', icon: LinkIcon },
+  { name: 'Activity Feed', href: '/activity', icon: Activity },
   { name: 'Attribution', href: '/attribution', icon: Share2 },
   { name: 'Integrations', href: '/integrations', icon: Puzzle },
   { name: 'Settings', href: '/settings', icon: Settings },
