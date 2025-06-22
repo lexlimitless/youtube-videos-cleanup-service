@@ -1,17 +1,8 @@
 {
-  "rewrites": [
-    {
-      "source": "/redirect/:id",
-      "destination": "/api/redirect/:id"
-    },
-    {
-      "source": "/api/oauth/calendly/callback",
-      "destination": "/api/oauth/calendly/callback"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+  "routes": [
+    { "src": "/api/.*", "dest": "/api" },
+    { "src": "/redirect/:id", "dest": "/api/redirect/:id" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ],
   "buildCommand": "yarn build",
   "installCommand": "yarn install",
