@@ -82,7 +82,8 @@ async function handler(req, res) {
         url: webhookUrl,
         events: ['invitee.created'],
         organization: organizationUri,
-        scope: 'organization',
+        scope: 'user',
+        user: calendlyUserUri,
       }),
     });
 
