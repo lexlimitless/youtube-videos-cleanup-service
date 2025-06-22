@@ -1,7 +1,9 @@
 import { supabaseAdmin } from '../../../src/server/supabase-admin.js';
 import { withAuth } from '../../../src/middleware/auth.js';
 
-async function handler(req, res, userId) {
+async function handler(req, res) {
+  const { userId } = req.auth;
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

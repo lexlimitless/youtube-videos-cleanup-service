@@ -1,7 +1,10 @@
 import { supabaseAdmin } from '../../src/server/supabase-admin.js';
 import { withAuth } from '../../src/middleware/auth.js';
+import { getCalendlyAccessToken } from '../../src/lib/calendly.js';
 
-async function handler(req, res, userId) {
+async function handler(req, res) {
+  const { userId } = req.auth;
+
   if (req.method === 'GET') {
     const { data, error } = await supabaseAdmin
       .from('user_integrations')
@@ -17,63 +20,48 @@ async function handler(req, res, userId) {
 
   if (req.method === 'DELETE') {
     const { provider } = req.body;
-    if (!provider) return res.status(400).json({ error: 'Missing provider' });
-
-    try {
-      // Get the current integration data to access tokens and webhook IDs
-      const { data: integration, error: getError } = await supabaseAdmin
-        .from('user_integrations')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('provider', provider)
-        .single();
-
-      if (getError) throw getError;
-
-      // We only need to revoke the token and delete the local records.
-      // The shared webhook is never deleted on a single user's disconnect.
-      if (provider === 'calendly' && integration?.access_token) {
-        // Revoke the OAuth token
-        try {
-          await fetch('https://auth.calendly.com/oauth/revoke', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-              client_id: process.env.CALENDLY_CLIENT_ID,
-              client_secret: process.env.CALENDLY_CLIENT_SECRET,
-              token: integration.access_token,
-            }),
-          });
-        } catch (e) {
-          console.error('Error revoking Calendly token:', e);
-        }
-      }
-
-      // Delete the user's integration record
-      const { error: deleteError } = await supabaseAdmin
-        .from('user_integrations')
-        .delete()
-        .eq('user_id', userId)
-        .eq('provider', provider);
-
-      if (deleteError) throw deleteError;
-
-      // We also remove the user-specific webhook status record, if it exists.
-      await supabaseAdmin
-        .from('webhook_status')
-        .delete()
-        .eq('user_id', userId);
-
-      return res.status(200).json({ success: true });
-    } catch (error) {
-      console.error('Error disconnecting integration:', error);
-      return res.status(500).json({ error: error.message });
+    if (provider !== 'calendly') {
+      return res.status(400).json({ error: 'Unsupported provider for disconnect.' });
     }
+
+    // Get the user's access token to revoke it
+    const accessToken = await getCalendlyAccessToken(userId);
+    if (!accessToken) {
+      // Even if token is missing, proceed to delete from our DB
+      console.warn(`Could not get Calendly access token for user ${userId}, but proceeding with disconnect.`);
+    } else {
+      try {
+        await fetch('https://auth.calendly.com/oauth/revoke', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': `Basic ${Buffer.from(`${process.env.CALENDLY_CLIENT_ID}:${process.env.CALENDLY_CLIENT_SECRET}`).toString('base64')}`
+          },
+          body: `token=${accessToken}`
+        });
+        console.log(`Successfully revoked Calendly token for user ${userId}`);
+      } catch (revokeError) {
+        console.error(`Error revoking Calendly token for user ${userId}, but proceeding with disconnect.`, revokeError);
+      }
+    }
+    
+    // Delete the integration from the database
+    const { error: dbError } = await supabaseAdmin
+      .from('user_integrations')
+      .delete()
+      .eq('user_id', userId)
+      .eq('provider', provider);
+
+    if (dbError) {
+      console.error(`Error deleting integration from DB for user ${userId}:`, dbError);
+      return res.status(500).json({ error: 'Failed to disconnect integration.' });
+    }
+
+    return res.status(200).json({ success: true, message: 'Integration disconnected successfully.' });
   }
 
-  return res.status(405).json({ error: 'Method not allowed' });
+  res.setHeader('Allow', ['GET', 'DELETE']);
+  res.status(405).end(`Method ${req.method} Not Allowed`);
 }
 
 export default withAuth(handler); 
