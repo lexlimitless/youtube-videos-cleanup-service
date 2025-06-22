@@ -63,6 +63,8 @@ export default function Integrations() {
   const { getToken } = useAuth();
   const [isDiagnosing, setIsDiagnosing] = useState(false);
   const [diagnosticResult, setDiagnosticResult] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteResult, setDeleteResult] = useState('');
 
   const checkCalendlyStatus = async () => {
     setIsLoading(true);
@@ -130,6 +132,36 @@ export default function Integrations() {
     }
   };
 
+  const handleForceDelete = async () => {
+    if (!window.confirm('Are you sure you want to delete ALL Calendly webhook subscriptions for your organization? This action cannot be undone and may affect other users if the webhook is shared.')) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteResult('Attempting to delete all webhooks...');
+
+    try {
+      const token = await getToken();
+      const response = await fetch('/api/user/diagnose-calendly', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+      setDeleteResult(data.message || data.error || 'An unknown error occurred.');
+    } catch (error) {
+      if (error instanceof Error) {
+        setDeleteResult(`An unexpected error occurred: ${error.message}`);
+      } else {
+        setDeleteResult('An unexpected error occurred.');
+      }
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   useEffect(() => {
     checkCalendlyStatus();
   }, []);
@@ -191,18 +223,32 @@ export default function Integrations() {
       <div className="bg-white p-6 rounded-lg shadow-md mb-8">
         <h2 className="text-xl font-semibold text-gray-700 mb-2">Calendly Diagnostic Tool</h2>
         <p className="text-gray-600 mb-4">
-          If you're having trouble with Calendly tracking, click this button to check the status of your webhook subscription. The detailed results will be printed in your Vercel deployment logs.
+          If you're having trouble with Calendly tracking, use these tools to inspect and manage your webhook subscriptions.
         </p>
-        <button
-          onClick={handleRunDiagnostic}
-          disabled={isDiagnosing}
-          className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400"
-        >
-          {isDiagnosing ? 'Running...' : 'Run Calendly Diagnostic'}
-        </button>
+        <div className="flex space-x-4">
+          <button
+            onClick={handleRunDiagnostic}
+            disabled={isDiagnosing}
+            className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400"
+          >
+            {isDiagnosing ? 'Running...' : 'Check Webhooks'}
+          </button>
+          <button
+            onClick={handleForceDelete}
+            disabled={isDeleting}
+            className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400"
+          >
+            {isDeleting ? 'Deleting...' : 'Force Delete All Webhooks'}
+          </button>
+        </div>
         {diagnosticResult && (
           <div className="mt-4 p-4 bg-gray-100 rounded">
             <p className="text-sm text-gray-700">{diagnosticResult}</p>
+          </div>
+        )}
+        {deleteResult && (
+          <div className="mt-4 p-4 bg-red-100 border border-red-200 rounded">
+            <p className="text-sm text-red-700">{deleteResult}</p>
           </div>
         )}
       </div>

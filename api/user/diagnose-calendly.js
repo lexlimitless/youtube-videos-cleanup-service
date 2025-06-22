@@ -5,64 +5,84 @@ import { getCalendlyAccessToken } from '../../src/lib/calendly.js';
 const handler = async (req, res) => {
   const { userId } = req.auth;
 
-  try {
-    console.log(`[DIAGNOSTIC] Starting webhook check for user: ${userId}`);
-    
-    // 1. Get the user's Calendly access token
-    const accessToken = await getCalendlyAccessToken(userId);
-    if (!accessToken) {
-      console.log(`[DIAGNOSTIC] No valid Calendly access token found for user ${userId}.`);
-      return res.status(404).json({ error: 'Calendly integration not found or token expired.' });
+  if (req.method === 'GET') {
+    try {
+      console.log(`[DIAGNOSTIC] Starting webhook check for user: ${userId}`);
+      
+      const accessToken = await getCalendlyAccessToken(userId);
+      if (!accessToken) {
+        return res.status(404).json({ error: 'Calendly integration not found or token expired.' });
+      }
+
+      const { data: integrationData } = await supabaseAdmin.from('user_integrations').select('calendly_organization_uri').eq('user_id', userId).single();
+      const organizationUri = integrationData?.calendly_organization_uri;
+      if(!organizationUri) return res.status(500).json({ error: 'Could not find Calendly organization URI.' });
+      
+      const webhookCheckUrl = `https://api.calendly.com/v2/webhook_subscriptions?organization=${organizationUri}&scope=organization`;
+      const webhookRes = await fetch(webhookCheckUrl, { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` } });
+      const webhookData = await webhookRes.json();
+
+      if (!webhookRes.ok) return res.status(500).json({ error: 'Failed to fetch webhook subscriptions from Calendly.', details: webhookData });
+
+      console.log('--- [DIAGNOSTIC] CALENDLY WEBHOOK SUBSCRIPTIONS ---');
+      console.log(JSON.stringify(webhookData, null, 2));
+      console.log('--- [DIAGNOSTIC] END OF REPORT ---');
+
+      return res.status(200).json({
+        message: 'Diagnostic check complete. See Vercel logs for webhook subscription details.',
+        subscriptions: webhookData.collection,
+      });
+    } catch (error) {
+      console.error('[DIAGNOSTIC] An unexpected error occurred:', error);
+      return res.status(500).json({ error: 'An internal server error occurred.' });
     }
-    console.log(`[DIAGNOSTIC] Found access token.`);
-
-    // 2. Get the user's organization URI from their integration details
-    const { data: integrationData, error: integrationError } = await supabaseAdmin
-      .from('user_integrations')
-      .select('calendly_organization_uri')
-      .eq('user_id', userId)
-      .eq('provider', 'calendly')
-      .single();
-
-    if (integrationError || !integrationData || !integrationData.calendly_organization_uri) {
-      console.error(`[DIAGNOSTIC] Error fetching organization URI for user ${userId}:`, integrationError);
-      return res.status(500).json({ error: 'Could not find Calendly organization URI for the user.' });
-    }
-    const organizationUri = integrationData.calendly_organization_uri;
-    console.log(`[DIAGNOSTIC] Found organization URI: ${organizationUri}`);
-
-    // 3. Fetch webhook subscriptions from Calendly API
-    const webhookCheckUrl = `https://api.calendly.com/v2/webhook_subscriptions?organization=${organizationUri}&scope=organization`;
-    console.log(`[DIAGNOSTIC] Fetching webhooks from: ${webhookCheckUrl}`);
-
-    const webhookRes = await fetch(webhookCheckUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    const webhookData = await webhookRes.json();
-
-    if (!webhookRes.ok) {
-      console.error('[DIAGNOSTIC] Error response from Calendly when fetching webhooks:', webhookData);
-      return res.status(500).json({ error: 'Failed to fetch webhook subscriptions from Calendly.', details: webhookData });
-    }
-
-    console.log('--- [DIAGNOSTIC] CALENDLY WEBHOOK SUBSCRIPTIONS ---');
-    console.log(JSON.stringify(webhookData, null, 2));
-    console.log('--- [DIAGNOSTIC] END OF REPORT ---');
-
-    res.status(200).json({
-      message: 'Diagnostic check complete. See Vercel logs for webhook subscription details.',
-      subscriptions: webhookData.collection,
-    });
-
-  } catch (error) {
-    console.error('[DIAGNOSTIC] An unexpected error occurred:', error);
-    res.status(500).json({ error: 'An internal server error occurred.' });
   }
+
+  if (req.method === 'DELETE') {
+    try {
+      console.log(`[DIAGNOSTIC-DELETE] Starting webhook cleanup for user: ${userId}`);
+      const accessToken = await getCalendlyAccessToken(userId);
+      if (!accessToken) return res.status(404).json({ error: 'Calendly integration not found or token expired.' });
+
+      const { data: integrationData } = await supabaseAdmin.from('user_integrations').select('calendly_organization_uri').eq('user_id', userId).single();
+      const organizationUri = integrationData?.calendly_organization_uri;
+      if (!organizationUri) return res.status(500).json({ error: 'Could not find Calendly organization URI.' });
+
+      // 1. List all webhooks
+      const listUrl = `https://api.calendly.com/v2/webhook_subscriptions?organization=${organizationUri}&scope=organization`;
+      const listRes = await fetch(listUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+      const listData = await listRes.json();
+      if (!listRes.ok) throw new Error('Failed to list existing webhooks before deleting.');
+
+      if (listData.collection.length === 0) {
+        return res.status(200).json({ success: true, message: 'No active webhooks found to delete.' });
+      }
+
+      // 2. Delete each webhook
+      const deletionPromises = listData.collection.map(webhook => {
+        console.log(`[DIAGNOSTIC-DELETE] Deleting webhook: ${webhook.uri}`);
+        return fetch(webhook.uri, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+      });
+
+      const results = await Promise.all(deletionPromises);
+      const failedDeletions = results.filter(r => !r.ok);
+
+      if (failedDeletions.length > 0) {
+        throw new Error('Some webhooks could not be deleted.');
+      }
+
+      return res.status(200).json({ success: true, message: `Successfully deleted ${listData.collection.length} webhook(s).` });
+
+    } catch (error) {
+      console.error('[DIAGNOSTIC-DELETE] Webhook cleanup failed:', error);
+      return res.status(500).json({ error: 'An internal server error occurred during cleanup.' });
+    }
+  }
+
+  return res.status(405).json({ error: 'Method Not Allowed' });
 };
 
 export default withAuth(handler); 
