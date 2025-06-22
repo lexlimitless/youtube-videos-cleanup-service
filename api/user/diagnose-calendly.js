@@ -1,6 +1,6 @@
-import { supabaseAdmin } from '../../server/supabase-admin.js';
-import { withAuth } from '../../middleware/auth.js';
-import { getCalendlyAccessToken } from '../../lib/calendly.js';
+import { supabaseAdmin } from '../../src/server/supabase-admin.js';
+import { withAuth } from '../../src/middleware/auth.js';
+import { getCalendlyAccessToken } from '../../src/lib/calendly.js';
 
 const handler = async (req, res) => {
   const { userId } = req.auth;

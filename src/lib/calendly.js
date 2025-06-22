@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../../server/supabase-admin.js';
+import { supabaseAdmin } from '../server/supabase-admin.js';
 
 export async function getCalendlyAccessToken(userId) {
   const { data: integration, error } = await supabaseAdmin
