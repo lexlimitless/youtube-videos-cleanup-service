@@ -1,0 +1,1 @@
+ALTER TABLE public.calls ADD COLUMN event_name TEXT; 

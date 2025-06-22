@@ -51,7 +51,6 @@ export default function CalendlyCallback() {
 
       } catch (err: any) {
         setError(err.message);
-        console.error('Error completing Calendly connection:', err);
       }
     };
 

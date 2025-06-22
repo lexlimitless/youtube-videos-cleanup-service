@@ -130,10 +130,8 @@ export default function Integrations() {
         }
 
         setDiagnosticResult(resultText);
-
       } else {
         setDiagnosticResult(`Error running diagnostic: ${data.error || 'Unknown error'}`);
-        console.error('Diagnostic failed:', data);
       }
     } catch (error) {
       if (error instanceof Error) {
@@ -141,7 +139,6 @@ export default function Integrations() {
       } else {
         setDiagnosticResult('An unexpected error occurred.');
       }
-      console.error('Unexpected diagnostic error:', error);
     } finally {
       setIsDiagnosing(false);
     }

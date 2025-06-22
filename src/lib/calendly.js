@@ -28,7 +28,6 @@ export async function getCalendlyAccessToken(userId) {
   }
 
   // Token is expired or about to expire, refresh it
-  console.log(`Refreshing Calendly token for user ${userId}`);
   const response = await fetch('https://auth.calendly.com/oauth/token', {
     method: 'POST',
     headers: {

@@ -23,7 +23,7 @@ export default async function handler(req, res) {
       .eq('provider', 'calendly');
 
     if (error) {
-      console.error('Error disconnecting Calendly:', error);
+      console.error('Error in old Calendly disconnect endpoint:', error);
       return res.status(500).json({ error: 'Failed to disconnect Calendly' });
     }
 

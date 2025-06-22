@@ -49,7 +49,7 @@ async function handler(req, res) {
           });
           
           if (webhookDeleteResponse.ok) {
-            console.log(`Successfully deleted webhook for user ${userId}: ${integration.webhook_id}`);
+            // Webhook deleted successfully
           } else {
             console.warn(`Failed to delete webhook for user ${userId}, but proceeding with disconnect. Status: ${webhookDeleteResponse.status}`);
           }

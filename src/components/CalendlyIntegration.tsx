@@ -42,7 +42,6 @@ export default function CalendlyIntegration({ isConnected, onConnectionChange }:
     setLoading(true);
     try {
       const clientId = import.meta.env.VITE_CALENDLY_CLIENT_ID;
-      console.log('Attempting to connect with Calendly Client ID:', clientId);
 
       if (!clientId) {
         alert('The Calendly Client ID is not configured correctly. Please check the environment variables.');
