@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../../src/server/supabase-admin.js';
+import { supabaseAdmin } from '../../../../src/server/supabase-admin.js';
 
 const SIGNING_KEY = process.env.CALENDLY_WEBHOOK_SIGNING_KEY;
 
@@ -23,6 +23,7 @@ export default async function handler(req, res) {
   console.log('--- Calendly Webhook Received ---');
   console.log('Request Method:', req.method);
   console.log('Request URL:', req.url);
+  console.log('Request Query:', req.query);
   console.log('Request Headers:', JSON.stringify(req.headers, null, 2));
   console.log('Raw Request Body:', JSON.stringify(req.body, null, 2));
 
@@ -31,14 +32,12 @@ export default async function handler(req, res) {
     return res.status(405).end();
   }
 
-  // Extract user ID from URL path: /webhooks/calendly/user/{userId}
-  const urlParts = req.url.split('/');
-  const userIndex = urlParts.indexOf('user');
-  const userId = userIndex !== -1 && urlParts[userIndex + 1] ? urlParts[userIndex + 1] : null;
+  // Extract user ID from the dynamic route parameter
+  const { userId } = req.query;
 
   if (!userId) {
-    console.error('[Calendly] Could not extract user ID from webhook URL:', req.url);
-    return res.status(400).json({ error: 'Invalid webhook URL format' });
+    console.error('[Calendly] Could not extract userId from webhook URL query:', req.query);
+    return res.status(400).json({ error: 'Invalid webhook URL format, userId is missing' });
   }
 
   console.log('[Calendly] Processing webhook for user:', userId);
