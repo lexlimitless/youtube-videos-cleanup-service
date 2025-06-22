@@ -19,7 +19,10 @@ export function withAuth(handler) {
       const userId = claims.sub;
       console.log(`[Auth Middleware] - Auth successful for user: ${userId}`);
       
-      return handler(req, res, userId);
+      // Attach the user ID to the request object for the handler to use
+      req.auth = { userId: userId };
+      
+      return handler(req, res);
 
     } catch (error) {
       console.error(`[Auth Middleware] - CRITICALUTHENTICATION ERROR:`, error);
