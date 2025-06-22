@@ -1,0 +1,2 @@
+ALTER TABLE public.calls ADD COLUMN user_id TEXT;
+ALTER TABLE public.calls ADD COLUMN timestamp TIMESTAMP WITH TIME ZONE; 

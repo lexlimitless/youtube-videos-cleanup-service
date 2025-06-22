@@ -79,7 +79,7 @@ export default async function handler(req, res) {
     const { error: callError } = await supabaseAdmin.from('calls').insert({
       short_code: trackingRef,
       calendly_email: payload.email,
-      calendly_event_id: payload.event,
+      event_id: payload.event,
       timestamp: payload.created_at,
       user_id: ourUserId,
     });
