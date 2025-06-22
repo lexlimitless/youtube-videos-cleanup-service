@@ -69,7 +69,7 @@ async function handler(req, res) {
     const calendlyUserUri = userData.resource.uri;
 
     let webhookId;
-    const webhookUrl = "https://webhook.site/09305126-46c3-4fac-b62e-1567ef898b11";
+    const webhookUrl = `${process.env.API_URL}/api/webhooks/calendly`;
     
     // Attempt to create the webhook subscription
     const webhookResponse = await fetch('https://api.calendly.com/webhook_subscriptions', {
