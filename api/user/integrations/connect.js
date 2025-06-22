@@ -53,7 +53,7 @@ async function handler(req, res) {
     if (tokenData.access_token) {
       const newExpiresAt = new Date(new Date().getTime() + tokenData.expires_in * 1000);
 
-      const userResponse = await fetch('https://api.calendly.com/v2/users/me', {
+      const userResponse = await fetch('https://api.calendly.com/users/me', {
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
       });
 
@@ -96,7 +96,7 @@ async function handler(req, res) {
         user: calendly_user_uri,
       };
 
-      const webhookRes = await fetch('https://api.calendly.com/v2/webhook_subscriptions', {
+      const webhookRes = await fetch('https://api.calendly.com/webhook_subscriptions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
