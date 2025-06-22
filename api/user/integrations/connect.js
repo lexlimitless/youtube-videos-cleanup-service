@@ -48,77 +48,75 @@ async function handler(req, res, userId) {
     const tokenData = await tokenResponse.json();
     const accessToken = tokenData.access_token;
 
-    // Use the access token to get user's organization URI from Calendly
-    const userResponse = await fetch('https://api.calendly.com/users/me', {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!userResponse.ok) {
-        console.error('Failed to fetch Calendly user data');
-        throw new Error('Failed to fetch user data from Calendly');
-    }
-    
-    const userData = await userResponse.json();
-    const organizationUri = userData.resource.current_organization;
+    if (tokenData.access_token) {
+      const newExpiresAt = new Date(new Date().getTime() + tokenData.expires_in * 1000);
 
-    let webhookId;
-    const webhookUrl = `${process.env.API_URL}/webhooks/calendly`;
-    
-    // Attempt to create the webhook subscription
-    const webhookResponse = await fetch('https://api.calendly.com/webhook_subscriptions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        url: webhookUrl,
-        events: ['invitee.created'],
-        organization: organizationUri,
-        scope: 'organization',
-      }),
-    });
+      const { data: userData, error: userError } = await fetch('https://api.calendly.com/v2/users/me', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      }).then(res => res.json());
 
-    if (webhookResponse.ok) {
-        const webhookData = await webhookResponse.json();
-        webhookId = webhookData.resource.uri;
-        console.log(`Successfully created new webhook: ${webhookId}`);
+      if (userError || !userData.resource) {
+        throw new Error('Could not fetch Calendly user details.');
+      }
+      
+      const calendly_user_uri = userData.resource.uri;
+      const calendly_organization_uri = userData.resource.current_organization;
 
-        // If we created it, make sure the central status is tracked.
-        await supabaseAdmin.from('webhook_status').upsert({
+      const { error: dbError } = await supabaseAdmin
+        .from('user_integrations')
+        .upsert(
+          {
+            user_id: userId,
             provider: 'calendly',
-            is_active: true,
-            webhook_id: webhookId,
-        }, { onConflict: 'provider' }); // Use 'provider' as the unique key for the single webhook.
+            provider_access_token: tokenData.access_token,
+            provider_refresh_token: tokenData.refresh_token,
+            provider_token_expires_at: newExpiresAt.toISOString(),
+            is_connected: true,
+            calendly_user_uri: calendly_user_uri,
+            calendly_organization_uri: calendly_organization_uri
+          },
+          { onConflict: 'user_id, provider' }
+        );
 
-    } else {
-        const errorBody = await webhookResponse.json();
-        // If the webhook already exists, we can proceed without its ID for this user.
-        if (errorBody.title === 'Already Exists') {
-            console.log('Webhook already exists, proceeding without fetching ID.');
-            webhookId = null; // Set to null as we don't need to store it per-user.
-        } else {
-            // For any other error, fail the process
-            console.error('Calendly webhook setup failed:', errorBody);
-            throw new Error('Failed to set up Calendly webhook.');
+      if (dbError) throw dbError;
+
+      // Now, create the webhook subscription
+      const webhookUrl = `${process.env.API_URL}/api/webhooks/calendly`;
+      
+      const webhookPayload = {
+        url: webhookUrl,
+        events: ['invitee.created', 'invitee.canceled'],
+        organization: calendly_organization_uri,
+        scope: 'organization',
+        user: calendly_user_uri,
+      };
+
+      const webhookRes = await fetch('https://api.calendly.com/v2/webhook_subscriptions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(webhookPayload),
+      });
+
+      if (!webhookRes.ok) {
+        const errorBody = await webhookRes.json();
+        console.error('Failed to create webhook:', errorBody);
+        if (errorBody.title !== 'Hook with this url already exists') {
+          throw new Error(`Webhook creation failed: ${errorBody.message}`);
         }
+        console.log('Webhook already exists, which is acceptable.');
+      } else {
+        const webhookData = await webhookRes.json();
+        await supabaseAdmin.from('user_integrations').update({
+          webhook_id: webhookData.resource.uri,
+        }).eq('user_id', userId).eq('provider', 'calendly');
+        console.log('Successfully created and stored webhook subscription.');
+      }
     }
 
-    // Save the user-specific integration details to the database
-    await supabaseAdmin.from('user_integrations').upsert({
-      user_id: userId,
-      provider: 'calendly',
-      access_token: accessToken,
-      is_connected: true,
-      // Webhook ID may be null for users after the first, which is acceptable.
-      webhook_id: webhookId,
-    }, { onConflict: 'user_id, provider' });
-
-
-    // The webhook_status table is now managed independently and not tied to each user.
-    // We no longer update it here for every user.
-
-    return res.status(200).json({ success: true });
-
+    res.redirect('/integrations');
   } catch (error) {
     console.error('Error connecting integration:', error.message);
     return res.status(500).json({ error: 'Internal Server Error' });
