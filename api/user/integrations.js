@@ -24,10 +24,45 @@ async function handler(req, res) {
       return res.status(400).json({ error: 'Unsupported provider for disconnect.' });
     }
 
-    // Get the user's access token to revoke it
+    // Get the user's integration details including webhook ID
+    const { data: integration, error: fetchError } = await supabaseAdmin
+      .from('user_integrations')
+      .select('webhook_id, provider_access_token')
+      .eq('user_id', userId)
+      .eq('provider', provider)
+      .single();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.error(`Error fetching integration for user ${userId}:`, fetchError);
+      return res.status(500).json({ error: 'Failed to fetch integration details.' });
+    }
+
+    // Delete the webhook from Calendly if it exists
+    if (integration?.webhook_id) {
+      try {
+        const accessToken = await getCalendlyAccessToken(userId);
+        if (accessToken) {
+          const webhookDeleteResponse = await fetch(integration.webhook_id, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+            },
+          });
+          
+          if (webhookDeleteResponse.ok) {
+            console.log(`Successfully deleted webhook for user ${userId}: ${integration.webhook_id}`);
+          } else {
+            console.warn(`Failed to delete webhook for user ${userId}, but proceeding with disconnect. Status: ${webhookDeleteResponse.status}`);
+          }
+        }
+      } catch (webhookError) {
+        console.error(`Error deleting webhook for user ${userId}, but proceeding with disconnect:`, webhookError);
+      }
+    }
+
+    // Revoke the access token
     const accessToken = await getCalendlyAccessToken(userId);
     if (!accessToken) {
-      // Even if token is missing, proceed to delete from our DB
       console.warn(`Could not get Calendly access token for user ${userId}, but proceeding with disconnect.`);
     } else {
       try {

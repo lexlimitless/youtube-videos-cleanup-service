@@ -1,1 +1,2 @@
-ALTER TABLE public.user_integrations ADD COLUMN webhook_id TEXT; 
+-- This migration has been manually applied or is no longer needed.
+-- The code has been updated to match the existing schema. 

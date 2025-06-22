@@ -13,6 +13,11 @@ export async function getCalendlyAccessToken(userId) {
     return null;
   }
 
+  // If no token expiration is stored, assume the token is still valid
+  if (!integration.provider_token_expires_at) {
+    return integration.provider_access_token;
+  }
+
   const tokenExpiresAt = new Date(integration.provider_token_expires_at).getTime();
   const now = new Date().getTime();
   const buffer = 5 * 60 * 1000; // 5-minute buffer

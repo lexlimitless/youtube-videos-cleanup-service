@@ -49,6 +49,11 @@ async function handler(req, res) {
 
     const tokenData = await tokenResponse.json();
     const accessToken = tokenData.access_token;
+    const refreshToken = tokenData.refresh_token;
+    const expiresIn = tokenData.expires_in;
+
+    // Calculate expiration time
+    const expiresAt = new Date(new Date().getTime() + expiresIn * 1000).toISOString();
 
     // Use the access token to get user's organization URI from Calendly
     const userResponse = await fetch('https://api.calendly.com/users/me', {
@@ -61,9 +66,10 @@ async function handler(req, res) {
     
     const userData = await userResponse.json();
     const organizationUri = userData.resource.current_organization;
+    const calendlyUserUri = userData.resource.uri;
 
     let webhookId;
-    const webhookUrl = `${process.env.API_URL}/webhooks/calendly`;
+    const webhookUrl = `${process.env.API_URL}/webhooks/calendly/user/${userId}`;
     
     // Attempt to create the webhook subscription
     const webhookResponse = await fetch('https://api.calendly.com/webhook_subscriptions', {
@@ -83,38 +89,26 @@ async function handler(req, res) {
     if (webhookResponse.ok) {
         const webhookData = await webhookResponse.json();
         webhookId = webhookData.resource.uri;
-        console.log(`Successfully created new webhook: ${webhookId}`);
-
-        // If we created it, make sure the central status is tracked.
-        await supabaseAdmin.from('webhook_status').upsert({
-            provider: 'calendly',
-            is_active: true,
-            webhook_id: webhookId,
-        }, { onConflict: 'provider' }); // Use 'provider' as the unique key for the single webhook.
+        console.log(`Successfully created new webhook for user ${userId}: ${webhookId}`);
 
     } else {
         const errorBody = await webhookResponse.json();
-        // If the webhook already exists, we can proceed without its ID for this user.
-        if (errorBody.title === 'Already Exists') {
-            console.log('Webhook already exists, proceeding without fetching ID.');
-            webhookId = null; // Set to null as we don't need to store it per-user.
-        } else {
-            // For any other error, fail the process
-            console.error('Calendly webhook setup failed:', errorBody);
-            throw new Error('Failed to set up Calendly webhook.');
-        }
+        console.error('Calendly webhook setup failed:', errorBody);
+        throw new Error('Failed to set up Calendly webhook.');
     }
 
     // Save the user-specific integration details to the database
     await supabaseAdmin.from('user_integrations').upsert({
       user_id: userId,
       provider: 'calendly',
-      access_token: accessToken,
+      provider_access_token: accessToken,
+      provider_refresh_token: refreshToken,
+      provider_token_expires_at: expiresAt,
       is_connected: true,
-      // Webhook ID may be null for users after the first, which is acceptable.
       webhook_id: webhookId,
+      calendly_organization_uri: organizationUri,
+      calendly_user_uri: calendlyUserUri,
     }, { onConflict: 'user_id, provider' });
-
 
     // The webhook_status table is now managed independently and not tied to each user.
     // We no longer update it here for every user.
