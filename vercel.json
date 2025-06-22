@@ -1,16 +1,20 @@
 {
-  "framework": "vite",
   "rewrites": [
     {
       "source": "/redirect/:id",
       "destination": "/api/redirect/:id"
     },
     {
-      "source": "/((?!api/|assets/).*)",
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ],
   "buildCommand": "yarn build",
   "installCommand": "yarn install",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "framework": "vite"
 } 
