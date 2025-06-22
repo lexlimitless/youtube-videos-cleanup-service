@@ -1,9 +1,7 @@
 import { supabaseAdmin } from '../../src/server/supabase-admin.js';
 import { withAuth } from '../../src/middleware/auth.js';
 
-async function handler(req, res) {
-  const { userId } = req.auth;
-
+async function handler(req, res, userId) {
   if (req.method === 'GET') {
     const { data, error } = await supabaseAdmin
       .from('user_integrations')

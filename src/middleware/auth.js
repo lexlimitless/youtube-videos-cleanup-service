@@ -19,9 +19,9 @@ export function withAuth(handler) {
       const userId = claims.sub;
       console.log(`[Auth Middleware] - Auth successful for user: ${userId}`);
       
-      // Attach the user ID to the request object for the handler to use
-      req.auth = { userId: userId };
-      
+      // Attach the user ID to the request object for the handler to use.
+      req.auth = { userId };
+
       return handler(req, res);
 
     } catch (error) {
