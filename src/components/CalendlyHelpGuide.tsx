@@ -28,7 +28,7 @@ const CalendlyHelpGuide = () => {
       }
     }
   } catch (e) {
-    // Errors are silenced in production
+    console.error("QR-Generator: Calendly tracking script fatal error:", e);
   }
 </script>`;
 

@@ -33,7 +33,7 @@ export async function getUserIdFromRequest(req) {
     const claims = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY });
     return claims?.sub || null;
   } catch (error) {
-    // Silently fail in production
+    console.error('Error getting userId from request:', error);
     return null;
   }
 } 
