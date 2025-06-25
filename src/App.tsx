@@ -8,7 +8,6 @@ import Redirect from './pages/redirect/[shortCode]';
 import Integrations from './pages/Integrations.tsx';
 import QRCodeGenerator from './pages/QRCodeGenerator.tsx';
 import CalendlyCallback from './pages/CalendlyCallback.tsx';
-import ActivityFeed from './pages/ActivityFeed.tsx';
 
 // Debug environment variables
 // console.log('Environment variables:', {
@@ -72,7 +71,6 @@ export default function App() {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="qr-codes" element={<div>QR Codes</div>} />
             <Route path="links" element={<TrackableLinks />} />
-            <Route path="activity" element={<ActivityFeed />} />
             <Route path="attribution" element={<div>Attribution Settings</div>} />
             <Route path="integrations" element={<Integrations />} />
             <Route path="integrations/calendly-callback" element={<CalendlyCallback />} />
