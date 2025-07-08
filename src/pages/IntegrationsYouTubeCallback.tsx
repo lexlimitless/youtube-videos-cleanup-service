@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '@clerk/clerk-react';
 
 export default function IntegrationsYouTubeCallback() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
+  const { getToken } = useAuth();
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -36,9 +38,13 @@ export default function IntegrationsYouTubeCallback() {
     // POST code, state, and userId to backend
     const finishConnection = async () => {
       try {
+        const clerkToken = await getToken();
         const response = await fetch('/api/user/youtube/connect', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${clerkToken}`,
+          },
           body: JSON.stringify({ code, state, userId }),
         });
         const data = await response.json();
@@ -58,7 +64,7 @@ export default function IntegrationsYouTubeCallback() {
       }
     };
     finishConnection();
-  }, [location, navigate]);
+  }, [location, navigate, getToken]);
 
   return (
     <div className="flex flex-col items-center justify-center h-screen">
