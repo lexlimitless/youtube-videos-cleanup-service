@@ -1,13 +1,12 @@
-import { NextApiRequest, NextApiResponse } from 'next';
-import { createClient } from '@supabase/supabase-js';
-import { getAuth } from '@clerk/nextjs/server';
+const { createClient } = require('@supabase/supabase-js');
+const { getAuth } = require('@clerk/nextjs/server');
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+module.exports = async (req, res) => {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -18,7 +17,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { pageToken, limit = 15 } = req.query;
+    const pageToken = req.query.pageToken;
+    const limit = req.query.limit ? parseInt(req.query.limit) : 15;
 
     // Check if user has YouTube integration
     const { data: integration, error: integrationError } = await supabase
@@ -53,11 +53,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       order: 'date',
       type: 'video',
       maxResults: limit.toString(),
-      key: process.env.YOUTUBE_API_KEY!
+      key: process.env.YOUTUBE_API_KEY
     });
 
     if (pageToken) {
-      params.append('pageToken', pageToken as string);
+      params.append('pageToken', pageToken);
     }
 
     const youtubeResponse = await fetch(`${youtubeApiUrl}?${params}`, {
@@ -67,7 +67,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     if (!youtubeResponse.ok) {
-      const errorData = await youtubeResponse.json();
+      let errorData = {};
+      try { errorData = await youtubeResponse.json(); } catch (e) {}
       console.error('YouTube API error:', errorData);
       
       if (youtubeResponse.status === 401) {
@@ -86,14 +87,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const youtubeData = await youtubeResponse.json();
 
     // Get video IDs for detailed information
-    const videoIds = youtubeData.items.map((item: any) => item.id.videoId).join(',');
+    const videoIds = youtubeData.items.map(item => item.id.videoId).join(',');
 
     // Fetch detailed video information
     const videoDetailsUrl = 'https://www.googleapis.com/youtube/v3/videos';
     const videoParams = new URLSearchParams({
       part: 'snippet,statistics,contentDetails',
       id: videoIds,
-      key: process.env.YOUTUBE_API_KEY!
+      key: process.env.YOUTUBE_API_KEY
     });
 
     const videoDetailsResponse = await fetch(`${videoDetailsUrl}?${videoParams}`, {
@@ -112,12 +113,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const videoDetailsData = await videoDetailsResponse.json();
 
     // Process and store videos in database
-    const videos = videoDetailsData.items.map((video: any) => ({
+    const videos = videoDetailsData.items.map(video => ({
       user_id: userId,
       youtube_video_id: video.id,
       title: video.snippet.title,
       description: video.snippet.description,
-      thumbnail_url: video.snippet.thumbnails?.high?.url || video.snippet.thumbnails?.medium?.url,
+      thumbnail_url: (video.snippet.thumbnails && video.snippet.thumbnails.high && video.snippet.thumbnails.high.url) || (video.snippet.thumbnails && video.snippet.thumbnails.medium && video.snippet.thumbnails.medium.url) || '',
       published_at: video.snippet.publishedAt,
       view_count: parseInt(video.statistics.viewCount) || 0,
       like_count: parseInt(video.statistics.likeCount) || 0,
@@ -141,7 +142,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Return formatted response
-    const formattedVideos = videos.map((video: any) => ({
+    const formattedVideos = videos.map(video => ({
       id: video.youtube_video_id,
       title: video.title,
       description: video.description,
@@ -159,7 +160,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       videos: formattedVideos,
       nextPageToken: youtubeData.nextPageToken,
       hasMore: !!youtubeData.nextPageToken,
-      totalResults: youtubeData.pageInfo?.totalResults || 0,
+      totalResults: youtubeData.pageInfo && youtubeData.pageInfo.totalResults ? youtubeData.pageInfo.totalResults : 0,
     });
 
   } catch (error) {
@@ -169,4 +170,4 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       message: 'An unexpected error occurred. Please try again later.'
     });
   }
-} 
+}; 
