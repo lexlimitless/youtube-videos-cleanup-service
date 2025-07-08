@@ -6,7 +6,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-async function handler(req, res, userId) {
+async function handler(req, res) {
+  const { userId } = req.auth;
   console.log('YouTube Videos API - userId:', userId);
 
   if (req.method !== 'GET') {
