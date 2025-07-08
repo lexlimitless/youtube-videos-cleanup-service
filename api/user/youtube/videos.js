@@ -7,6 +7,8 @@ const supabase = createClient(
 );
 
 async function handler(req, res, userId) {
+  console.log('YouTube Videos API - userId:', userId);
+
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET']);
     return res.status(405).json({ error: 'Method not allowed' });
@@ -24,6 +26,9 @@ async function handler(req, res, userId) {
       .eq('provider', 'youtube')
       .eq('is_connected', true)
       .single();
+
+    console.log('YouTube Videos API - integration:', integration);
+    console.log('YouTube Videos API - integrationError:', integrationError);
 
     if (integrationError || !integration) {
       return res.status(400).json({ 
