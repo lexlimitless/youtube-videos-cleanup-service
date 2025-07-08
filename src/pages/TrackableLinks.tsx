@@ -488,7 +488,7 @@ export default function TrackableLinks() {
       {/* Modal for creating or editing a trackable link */}
       <Dialog open={showModal} onClose={() => { setShowModal(false); setEditingLink(null); }} className="fixed inset-0 z-50 flex items-center justify-center">
         <div className="fixed inset-0 bg-black bg-opacity-40" aria-hidden="true" />
-        <div className="relative bg-white rounded-xl shadow-lg p-8 w-full max-w-lg mx-auto">
+        <div className="relative bg-white rounded-xl shadow-lg p-8 w-full max-w-4xl mx-auto">
           <Dialog.Panel>
             <Dialog.Title className="text-xl font-semibold mb-4">Create Trackable Link</Dialog.Title>
             <form onSubmit={handleSave} className="space-y-4">
