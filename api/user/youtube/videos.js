@@ -59,8 +59,54 @@ async function handler(req, res) {
       });
     }
 
-    // --- Token refresh logic ---
+    // --- Caching logic ---
     const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    let cachedVideos = [];
+    let cacheIsFresh = false;
+
+    // Only use cache if not paginating (first page)
+    if (!pageToken) {
+      const { data: videosFromDb, error: dbError } = await supabase
+        .from('youtube_videos')
+        .select('*')
+        .eq('user_id', userId)
+        .order('published_at', { ascending: false })
+        .limit(limit);
+      if (!dbError && videosFromDb && videosFromDb.length > 0) {
+        // Check if all videos are fresh (fetched_at within last hour)
+        cacheIsFresh = videosFromDb.every(v => v.fetched_at && new Date(v.fetched_at) > oneHourAgo);
+        if (cacheIsFresh) {
+          cachedVideos = videosFromDb;
+        }
+      }
+    }
+
+    if (cacheIsFresh) {
+      // Return cached videos
+      const formattedVideos = cachedVideos.map(video => ({
+        id: video.youtube_video_id,
+        title: video.title,
+        description: video.description,
+        thumbnail_url: video.thumbnail_url,
+        published_at: video.published_at,
+        view_count: video.view_count,
+        like_count: video.like_count,
+        comment_count: video.comment_count,
+        duration: video.duration,
+        channel_id: video.channel_id,
+        channel_title: video.channel_title,
+      }));
+      return res.status(200).json({
+        videos: formattedVideos,
+        nextPageToken: null,
+        hasMore: false,
+        totalResults: formattedVideos.length,
+        cached: true,
+      });
+    }
+
+    // --- Token refresh logic ---
     let accessToken = integration.provider_access_token;
     let expiresAt = integration.provider_token_expires_at ? new Date(integration.provider_token_expires_at) : null;
 
@@ -206,6 +252,7 @@ async function handler(req, res) {
       duration: video.contentDetails.duration,
       channel_id: video.snippet.channelId,
       channel_title: video.snippet.channelTitle,
+      fetched_at: now.toISOString(), // Use the existing now variable
     }));
 
     // Upsert videos to database (update if exists, insert if not)
@@ -241,6 +288,7 @@ async function handler(req, res) {
       nextPageToken: youtubeData.nextPageToken,
       hasMore: !!youtubeData.nextPageToken,
       totalResults: youtubeData.pageInfo && youtubeData.pageInfo.totalResults ? youtubeData.pageInfo.totalResults : 0,
+      cached: false,
     });
 
   } catch (error) {
