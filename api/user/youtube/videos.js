@@ -1,13 +1,14 @@
-const { createClient } = require('@supabase/supabase-js');
-const { getAuth } = require('@clerk/nextjs/server');
+import { createClient } from '@supabase/supabase-js';
+import { getAuth } from '@clerk/nextjs/server';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-module.exports = async (req, res) => {
+async function handler(req, res) {
   if (req.method !== 'GET') {
+    res.setHeader('Allow', ['GET']);
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
@@ -170,4 +171,6 @@ module.exports = async (req, res) => {
       message: 'An unexpected error occurred. Please try again later.'
     });
   }
-}; 
+}
+
+export default handler; 
