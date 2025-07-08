@@ -1,23 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
-import { getAuth } from '@clerk/nextjs/server';
+import { withAuth } from '../../src/middleware/auth.js';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-async function handler(req, res) {
+async function handler(req, res, userId) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET']);
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { userId } = await getAuth(req);
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
     const pageToken = req.query.pageToken;
     const limit = req.query.limit ? parseInt(req.query.limit) : 15;
 
@@ -173,4 +168,4 @@ async function handler(req, res) {
   }
 }
 
-export default handler; 
+export default withAuth(handler); 
