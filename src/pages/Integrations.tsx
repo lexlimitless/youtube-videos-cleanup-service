@@ -70,11 +70,6 @@ export default function Integrations() {
   const [youtubeConnected, setYoutubeConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const { getToken } = useAuth();
-  const [isDiagnosing, setIsDiagnosing] = useState(false);
-  const [diagnosticResult, setDiagnosticResult] = useState<string | null>(null);
-  const [diagnosticCallbackUrl, setDiagnosticCallbackUrl] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteResult, setDeleteResult] = useState('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDiagnosingYouTube, setIsDiagnosingYouTube] = useState(false);
@@ -121,80 +116,7 @@ export default function Integrations() {
     }
   };
 
-  const handleRunDiagnostic = async () => {
-    setIsDiagnosing(true);
-    setDiagnosticResult(null);
-    setDiagnosticCallbackUrl(null);
 
-    try {
-      const token = await getToken();
-      const response = await fetch('/api/user/diagnose-calendly', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        let resultText = `Check complete. Found ${data.calendly_subscriptions.length} webhook(s) on Calendly.`;
-        resultText += `\n\nDB says our webhook ID is: ${data.local_webhook_id || 'Not Found'}`;
-        
-        const ourWebhook = data.calendly_subscriptions.find((sub: any) => data.local_webhook_id && sub.uri.includes(data.local_webhook_id));
-        
-        if (ourWebhook) {
-          resultText += `\n\nFound our webhook on Calendly: ${ourWebhook.uri}`;
-          resultText += `\nState: ${ourWebhook.state}`;
-          setDiagnosticCallbackUrl(ourWebhook.callback_url);
-        } else {
-          resultText += `\n\nOur webhook was NOT found on Calendly. Please try disconnecting and reconnecting.`;
-        }
-
-        setDiagnosticResult(resultText);
-      } else {
-        setDiagnosticResult(`Error running diagnostic: ${data.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      if (error instanceof Error) {
-        setDiagnosticResult(`An unexpected error occurred: ${error.message}`);
-      } else {
-        setDiagnosticResult('An unexpected error occurred.');
-      }
-    } finally {
-      setIsDiagnosing(false);
-    }
-  };
-
-  const handleForceDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete ALL Calendly webhook subscriptions for your organization? This action cannot be undone and may affect other users if the webhook is shared.')) {
-      return;
-    }
-
-    setIsDeleting(true);
-    setDeleteResult('Attempting to delete all webhooks...');
-
-    try {
-      const token = await getToken();
-      const response = await fetch('/api/user/diagnose-calendly', {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      const data = await response.json();
-      setDeleteResult(data.message || data.error || 'An unknown error occurred.');
-    } catch (error) {
-      if (error instanceof Error) {
-        setDeleteResult(`An unexpected error occurred: ${error.message}`);
-      } else {
-        setDeleteResult('An unexpected error occurred.');
-      }
-    } finally {
-      setIsDeleting(false);
-    }
-  };
 
   const handleRunYouTubeDiagnostic = async () => {
     setIsDiagnosingYouTube(true);
@@ -396,46 +318,7 @@ export default function Integrations() {
         ))}
       </div>
       
-      <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-        <h2 className="text-xl font-semibold text-gray-700 mb-2">Calendly Diagnostic Tool</h2>
-        <p className="text-gray-600 mb-4">
-          If you're having trouble with Calendly tracking, use these tools to inspect and manage your webhook subscriptions.
-        </p>
-        <div className="flex space-x-4">
-          <button
-            onClick={handleRunDiagnostic}
-            disabled={isDiagnosing}
-            className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400"
-          >
-            {isDiagnosing ? 'Running...' : 'Check Webhooks'}
-          </button>
-          <button
-            onClick={handleForceDelete}
-            disabled={isDeleting}
-            className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400"
-          >
-            {isDeleting ? 'Deleting...' : 'Force Delete All Webhooks'}
-          </button>
-        </div>
-        {diagnosticResult && (
-          <div className="mt-4 p-4 bg-gray-100 rounded space-y-2">
-            <pre className="text-sm text-gray-700 whitespace-pre-wrap">{diagnosticResult}</pre>
-            {diagnosticCallbackUrl && (
-              <div>
-                <p className="text-sm font-semibold text-gray-800">Callback URL on Calendly:</p>
-                <code className="block bg-gray-200 p-2 rounded text-xs text-black break-all">
-                  {diagnosticCallbackUrl}
-                </code>
-              </div>
-            )}
-          </div>
-        )}
-        {deleteResult && (
-          <div className="mt-4 p-4 bg-red-100 border border-red-200 rounded">
-            <p className="text-sm text-red-700">{deleteResult}</p>
-          </div>
-        )}
-      </div>
+
 
       <div className="bg-white p-6 rounded-lg shadow-md mb-8">
         <h2 className="text-xl font-semibold text-gray-700 mb-2">YouTube Diagnostic Tool</h2>
