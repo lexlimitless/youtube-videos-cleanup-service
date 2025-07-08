@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 import CalendlyIntegration from '../components/CalendlyIntegration';
 import CalendlyHelpGuide from '../components/CalendlyHelpGuide';
+import YouTubeIntegration from '../components/YouTubeIntegration';
 
 const integrations = [
   {
@@ -9,6 +10,13 @@ const integrations = [
     key: 'calendly',
     description: 'Track calls booked via Calendly and attribute them to your links.',
     icon: '/integrations/calendly.svg',
+    status: 'dynamic', // will be replaced with real status
+  },
+  {
+    name: 'YouTube',
+    key: 'youtube',
+    description: 'Track video views and engagement from your YouTube channel.',
+    icon: '/integrations/youtube.svg',
     status: 'dynamic', // will be replaced with real status
   },
   {
@@ -59,6 +67,7 @@ const integrations = [
 export default function Integrations() {
   const [search, setSearch] = useState('');
   const [calendlyConnected, setCalendlyConnected] = useState(false);
+  const [youtubeConnected, setYoutubeConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const { getToken } = useAuth();
   const [isDiagnosing, setIsDiagnosing] = useState(false);
@@ -66,8 +75,10 @@ export default function Integrations() {
   const [diagnosticCallbackUrl, setDiagnosticCallbackUrl] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteResult, setDeleteResult] = useState('');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const checkCalendlyStatus = async () => {
+  const checkIntegrationStatus = async () => {
     setIsLoading(true);
     try {
       const token = await getToken();
@@ -75,6 +86,7 @@ export default function Integrations() {
         // Handle case where user is not authenticated
         setIsLoading(false);
         setCalendlyConnected(false);
+        setYoutubeConnected(false);
         return;
       }
 
@@ -88,12 +100,18 @@ export default function Integrations() {
         const calendly = result.data.find(
           (row: any) => row.provider === 'calendly' && row.is_connected
         );
+        const youtube = result.data.find(
+          (row: any) => row.provider === 'youtube' && row.is_connected
+        );
         setCalendlyConnected(!!calendly);
+        setYoutubeConnected(!!youtube);
       } else {
         setCalendlyConnected(false);
+        setYoutubeConnected(false);
       }
     } catch (err) {
       setCalendlyConnected(false);
+      setYoutubeConnected(false);
     } finally {
       setIsLoading(false);
     }
@@ -175,7 +193,42 @@ export default function Integrations() {
   };
 
   useEffect(() => {
-    checkCalendlyStatus();
+    checkIntegrationStatus();
+    
+    // Handle URL parameters for success/error messages
+    const urlParams = new URLSearchParams(window.location.search);
+    const success = urlParams.get('success');
+    const error = urlParams.get('error');
+    const message = urlParams.get('message');
+    const channel = urlParams.get('channel');
+    
+    if (success === 'youtube_connected' && channel) {
+      setSuccessMessage(`Successfully connected to YouTube channel: ${channel}`);
+      // Clear URL parameters
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (error) {
+      let errorMsg = 'An error occurred during integration.';
+      if (error === 'youtube_oauth_error' && message) {
+        errorMsg = `YouTube OAuth error: ${message}`;
+      } else if (error === 'youtube_no_code') {
+        errorMsg = 'No authorization code received from YouTube.';
+      } else if (error === 'youtube_token_exchange_failed') {
+        errorMsg = 'Failed to exchange authorization code for access token.';
+      } else if (error === 'youtube_no_access_token') {
+        errorMsg = 'No access token received from YouTube.';
+      } else if (error === 'youtube_channel_fetch_failed') {
+        errorMsg = 'Failed to fetch YouTube channel information.';
+      } else if (error === 'youtube_no_channels') {
+        errorMsg = 'No YouTube channels found for this account.';
+      } else if (error === 'youtube_database_error') {
+        errorMsg = 'Failed to save YouTube integration to database.';
+      } else if (error === 'youtube_unexpected_error') {
+        errorMsg = 'An unexpected error occurred during YouTube integration.';
+      }
+      setErrorMessage(errorMsg);
+      // Clear URL parameters
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, []);
 
   const filtered = integrations.filter(i =>
@@ -185,6 +238,35 @@ export default function Integrations() {
   return (
     <div className="flex flex-col w-full max-w-full px-0 bg-gray-50 font-sans min-h-screen">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">Integrations</h1>
+      
+      {/* Success/Error Messages */}
+      {successMessage && (
+        <div className="mb-6 p-4 bg-green-100 border border-green-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <p className="text-green-700">{successMessage}</p>
+            <button
+              onClick={() => setSuccessMessage(null)}
+              className="text-green-500 hover:text-green-700"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {errorMessage && (
+        <div className="mb-6 p-4 bg-red-100 border border-red-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <p className="text-red-700">{errorMessage}</p>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="text-red-500 hover:text-red-700"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-4 mb-8">
         <input
           type="text"
@@ -218,6 +300,13 @@ export default function Integrations() {
                   <span className="absolute top-4 right-4 bg-gray-100 text-gray-500 text-xs font-bold px-3 py-1 rounded-full">Not Connected</span>
                 )
             )}
+            {integration.key === 'youtube' && !isLoading && (
+                youtubeConnected ? (
+                  <span className="absolute top-4 right-4 bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full">Connected</span>
+                ) : (
+                  <span className="absolute top-4 right-4 bg-gray-100 text-gray-500 text-xs font-bold px-3 py-1 rounded-full">Not Connected</span>
+                )
+            )}
 
             {integration.status === 'coming' && (
               <span className="absolute top-4 right-4 bg-gray-100 text-gray-400 text-xs font-bold px-3 py-1 rounded-full">Coming Soon</span>
@@ -225,7 +314,12 @@ export default function Integrations() {
 
             {integration.key === 'calendly' && (
               <div className="w-full mt-auto pt-4">
-                <CalendlyIntegration isConnected={calendlyConnected} onConnectionChange={checkCalendlyStatus} />
+                <CalendlyIntegration isConnected={calendlyConnected} onConnectionChange={checkIntegrationStatus} />
+              </div>
+            )}
+            {integration.key === 'youtube' && (
+              <div className="w-full mt-auto pt-4">
+                <YouTubeIntegration isConnected={youtubeConnected} onConnectionChange={checkIntegrationStatus} />
               </div>
             )}
           </div>

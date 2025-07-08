@@ -19,14 +19,14 @@ async function handler(req, res) {
 
   if (req.method === 'DELETE') {
     const { provider } = req.body;
-    if (provider !== 'calendly') {
+    if (provider !== 'calendly' && provider !== 'youtube') {
       return res.status(400).json({ error: 'Unsupported provider for disconnect.' });
     }
 
     // Get the user's integration details including webhook ID
     const { data: integration, error: fetchError } = await supabaseAdmin
       .from('user_integrations')
-      .select('webhook_id, provider_access_token')
+      .select('webhook_id, provider_access_token, provider_user_id')
       .eq('user_id', userId)
       .eq('provider', provider)
       .single();
@@ -37,7 +37,7 @@ async function handler(req, res) {
     }
 
     // Delete the webhook from Calendly if it exists
-    if (integration?.webhook_id) {
+    if (provider === 'calendly' && integration?.webhook_id) {
       try {
         const accessToken = await getCalendlyAccessToken(userId);
         if (accessToken) {
@@ -60,21 +60,35 @@ async function handler(req, res) {
     }
 
     // Revoke the access token
-    const accessToken = await getCalendlyAccessToken(userId);
-    if (!accessToken) {
-      console.warn(`Could not get Calendly access token for user ${userId}, but proceeding with disconnect.`);
-    } else {
+    if (provider === 'calendly') {
+      const accessToken = await getCalendlyAccessToken(userId);
+      if (!accessToken) {
+        console.warn(`Could not get Calendly access token for user ${userId}, but proceeding with disconnect.`);
+      } else {
+        try {
+          await fetch('https://auth.calendly.com/oauth/revoke', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': `Basic ${Buffer.from(`${process.env.CALENDLY_CLIENT_ID}:${process.env.CALENDLY_CLIENT_SECRET}`).toString('base64')}`
+            },
+            body: `token=${accessToken}`
+          });
+        } catch (revokeError) {
+          console.error(`Error revoking Calendly token for user ${userId}, but proceeding with disconnect.`, revokeError);
+        }
+      }
+    } else if (provider === 'youtube' && integration?.provider_access_token) {
       try {
-        await fetch('https://auth.calendly.com/oauth/revoke', {
+        await fetch('https://oauth2.googleapis.com/revoke', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': `Basic ${Buffer.from(`${process.env.CALENDLY_CLIENT_ID}:${process.env.CALENDLY_CLIENT_SECRET}`).toString('base64')}`
           },
-          body: `token=${accessToken}`
+          body: `token=${integration.provider_access_token}`
         });
       } catch (revokeError) {
-        console.error(`Error revoking Calendly token for user ${userId}, but proceeding with disconnect.`, revokeError);
+        console.error(`Error revoking YouTube token for user ${userId}, but proceeding with disconnect.`, revokeError);
       }
     }
     
@@ -84,6 +98,14 @@ async function handler(req, res) {
       .delete()
       .eq('user_id', userId)
       .eq('provider', provider);
+
+    // Also delete from youtube_accounts if it's a YouTube integration
+    if (provider === 'youtube') {
+      await supabaseAdmin
+        .from('youtube_accounts')
+        .delete()
+        .eq('user_id', userId);
+    }
 
     if (dbError) {
       console.error(`Error deleting integration from DB for user ${userId}:`, dbError);
