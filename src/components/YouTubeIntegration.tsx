@@ -1,6 +1,15 @@
 import React, { useState } from 'react';
 import { useAuth } from '@clerk/clerk-react';
 
+function generateRandomState(length = 32) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
 interface YouTubeIntegrationProps {
   isConnected: boolean;
   onConnectionChange: () => void;
@@ -8,7 +17,7 @@ interface YouTubeIntegrationProps {
 
 export default function YouTubeIntegration({ isConnected, onConnectionChange }: YouTubeIntegrationProps) {
   const [loading, setLoading] = useState(false);
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
 
   const handleConnect = async () => {
     setLoading(true);
@@ -22,7 +31,11 @@ export default function YouTubeIntegration({ isConnected, onConnectionChange }: 
       }
 
       const redirectUri = `${window.location.origin}/api/youtube/callback`;
-      
+      const state = generateRandomState();
+      // Store the state and userId in sessionStorage for retrieval after callback
+      sessionStorage.setItem('youtube_oauth_state', state);
+      sessionStorage.setItem('youtube_oauth_user_id', userId || '');
+
       // YouTube OAuth 2.0 authorization URL
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
         `response_type=code&` +
@@ -30,7 +43,8 @@ export default function YouTubeIntegration({ isConnected, onConnectionChange }: 
         `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `scope=${encodeURIComponent('https://www.googleapis.com/auth/youtube.readonly')}&` +
         `access_type=offline&` +
-        `prompt=consent`;
+        `prompt=consent&` +
+        `state=${state}`;
       
       window.location.href = authUrl;
     } catch (error) {

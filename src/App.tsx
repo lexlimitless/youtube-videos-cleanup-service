@@ -8,6 +8,7 @@ import Redirect from './pages/redirect/[shortCode]';
 import Integrations from './pages/Integrations.tsx';
 import QRCodeGenerator from './pages/QRCodeGenerator.tsx';
 import CalendlyCallback from './pages/CalendlyCallback.tsx';
+import IntegrationsYouTubeCallback from './pages/IntegrationsYouTubeCallback';
 
 // Debug environment variables
 // console.log('Environment variables:', {
@@ -74,6 +75,7 @@ export default function App() {
             <Route path="attribution" element={<div>Attribution Settings</div>} />
             <Route path="integrations" element={<Integrations />} />
             <Route path="integrations/calendly-callback" element={<CalendlyCallback />} />
+            <Route path="integrations/youtube-callback" element={<IntegrationsYouTubeCallback />} />
             <Route path="settings" element={<div>Account Settings</div>} />
           </Route>
           {/* Public redirect route */}
