@@ -5,10 +5,25 @@ import { Dialog, Menu } from '@headlessui/react';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import { TrackableLink, LinkStats } from '../types/trackableLinks';
 import { createPortal } from 'react-dom';
+import YouTubeVideoGrid from '../components/YouTubeVideoGrid';
 
 const platforms = ['YouTube', 'Instagram'];
 const attributionWindows = [1, 7, 14];
 const SHORT_LINK_DOMAIN = import.meta.env.VITE_SHORT_LINK_DOMAIN || 'https://moreclientslesscrickets.com';
+
+interface YouTubeVideo {
+  id: string;
+  title: string;
+  description: string;
+  thumbnail_url: string;
+  published_at: string;
+  view_count: number;
+  like_count: number;
+  comment_count: number;
+  duration: string;
+  channel_id: string;
+  channel_title: string;
+}
 
 export default function TrackableLinks() {
   const { user } = useUser();
@@ -41,6 +56,9 @@ export default function TrackableLinks() {
     url: '',
     attribution_window_days: 7,
   });
+
+  // YouTube video selection state
+  const [selectedYouTubeVideo, setSelectedYouTubeVideo] = useState<YouTubeVideo | null>(null);
 
   // Fetch links and stats
   async function fetchLinks() {
@@ -162,6 +180,7 @@ export default function TrackableLinks() {
           title: form.title || `Untitled Link ${links.length + 1}`,
           platform: form.platform,
           attribution_window_days: form.attribution_window_days,
+          youtube_video_id: selectedYouTubeVideo?.id || null,
         }),
       });
 
@@ -173,6 +192,7 @@ export default function TrackableLinks() {
       setVisibleRows(10);
       setShowModal(false);
       setForm({ title: '', platform: 'YouTube', url: '', attribution_window_days: 7 });
+      setSelectedYouTubeVideo(null);
     } catch (error) {
       console.error('Error creating link:', error);
       alert('Failed to create link. Please try again.');
@@ -272,12 +292,13 @@ export default function TrackableLinks() {
         const response = await fetch(`/api/user/links?id=${editingLink.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({
-            destination_url: form.url,
-            title: form.title,
-            platform: form.platform,
-            attribution_window_days: form.attribution_window_days,
-          }),
+                  body: JSON.stringify({
+          destination_url: form.url,
+          title: form.title,
+          platform: form.platform,
+          attribution_window_days: form.attribution_window_days,
+          youtube_video_id: selectedYouTubeVideo?.id || null,
+        }),
         });
         if (!response.ok) throw new Error('Failed to update link');
       } else {
@@ -286,13 +307,14 @@ export default function TrackableLinks() {
         const response = await fetch('/api/user/links', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({
-            short_code: shortCode,
-            destination_url: form.url,
-            title: form.title || `Untitled Link ${links.length + 1}`,
-            platform: form.platform,
-            attribution_window_days: form.attribution_window_days,
-          }),
+                  body: JSON.stringify({
+          short_code: shortCode,
+          destination_url: form.url,
+          title: form.title || `Untitled Link ${links.length + 1}`,
+          platform: form.platform,
+          attribution_window_days: form.attribution_window_days,
+          youtube_video_id: selectedYouTubeVideo?.id || null,
+        }),
         });
         if (!response.ok) throw new Error('Failed to create link');
       }
@@ -301,6 +323,7 @@ export default function TrackableLinks() {
       setShowModal(false);
       setEditingLink(null);
       setForm({ title: '', platform: 'YouTube', url: '', attribution_window_days: 7 });
+      setSelectedYouTubeVideo(null);
     } catch (error) {
       console.error('Error saving link:', error);
       alert('Failed to save link. Please try again.');
@@ -517,6 +540,49 @@ export default function TrackableLinks() {
                   ))}
                 </select>
               </div>
+
+              {/* YouTube Video Selection */}
+              {form.platform === 'YouTube' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select YouTube Video (Optional)
+                  </label>
+                  <div className="border border-gray-200 rounded-md p-4 bg-gray-50">
+                    <YouTubeVideoGrid
+                      onVideoSelect={setSelectedYouTubeVideo}
+                      selectedVideo={selectedYouTubeVideo}
+                    />
+                  </div>
+                  {selectedYouTubeVideo && (
+                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                      <div className="flex items-center gap-3">
+                        <img 
+                          src={selectedYouTubeVideo.thumbnail_url} 
+                          alt={selectedYouTubeVideo.title}
+                          className="w-16 h-12 object-cover rounded"
+                        />
+                        <div className="flex-1">
+                          <h4 className="font-medium text-sm text-gray-900 line-clamp-2">
+                            {selectedYouTubeVideo.title}
+                          </h4>
+                          <p className="text-xs text-gray-500">
+                            {selectedYouTubeVideo.view_count.toLocaleString()} views • {new Date(selectedYouTubeVideo.published_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedYouTubeVideo(null)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex gap-4 mt-6">
                 <button
                   type="submit"

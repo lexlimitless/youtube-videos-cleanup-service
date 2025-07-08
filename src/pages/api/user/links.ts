@@ -22,6 +22,7 @@ interface CreateLinkRequest {
   title: string;
   platform: string;
   attribution_window_days: number;
+  youtube_video_id?: string | null;
 }
 
 interface UpdateLinkRequest {
@@ -29,6 +30,7 @@ interface UpdateLinkRequest {
   platform?: string;
   destination_url?: string;
   attribution_window_days?: number;
+  youtube_video_id?: string | null;
 }
 
 interface ApiResponse<T> {
