@@ -77,7 +77,7 @@ export async function getYouTubeChannelInfo(userId) {
 
   try {
     const response = await fetch(
-      'https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true',
+      'https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true',
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,

@@ -77,6 +77,10 @@ export default function Integrations() {
   const [deleteResult, setDeleteResult] = useState('');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isDiagnosingYouTube, setIsDiagnosingYouTube] = useState(false);
+  const [youtubeDiagnosticResult, setYoutubeDiagnosticResult] = useState<any>(null);
+  const [isDeletingYouTube, setIsDeletingYouTube] = useState(false);
+  const [youtubeDeleteResult, setYoutubeDeleteResult] = useState('');
 
   const checkIntegrationStatus = async () => {
     setIsLoading(true);
@@ -189,6 +193,72 @@ export default function Integrations() {
       }
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleRunYouTubeDiagnostic = async () => {
+    setIsDiagnosingYouTube(true);
+    setYoutubeDiagnosticResult(null);
+
+    try {
+      const token = await getToken();
+      const response = await fetch('/api/user/diagnose-youtube', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setYoutubeDiagnosticResult(data);
+      } else {
+        setYoutubeDiagnosticResult({ error: data.error || 'Unknown error', status: data.status });
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        setYoutubeDiagnosticResult({ error: `An unexpected error occurred: ${error.message}`, status: 'error' });
+      } else {
+        setYoutubeDiagnosticResult({ error: 'An unexpected error occurred.', status: 'error' });
+      }
+    } finally {
+      setIsDiagnosingYouTube(false);
+    }
+  };
+
+  const handleForceDeleteYouTube = async () => {
+    if (!window.confirm('Are you sure you want to force disconnect your YouTube integration? This action cannot be undone and will remove all YouTube data.')) {
+      return;
+    }
+
+    setIsDeletingYouTube(true);
+    setYoutubeDeleteResult('Attempting to force disconnect YouTube...');
+
+    try {
+      const token = await getToken();
+      const response = await fetch('/api/user/diagnose-youtube', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+      setYoutubeDeleteResult(data.message || data.error || 'An unknown error occurred.');
+      
+      if (response.ok) {
+        // Refresh integration status after successful deletion
+        checkIntegrationStatus();
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        setYoutubeDeleteResult(`An unexpected error occurred: ${error.message}`);
+      } else {
+        setYoutubeDeleteResult('An unexpected error occurred.');
+      }
+    } finally {
+      setIsDeletingYouTube(false);
     }
   };
 
@@ -363,6 +433,109 @@ export default function Integrations() {
         {deleteResult && (
           <div className="mt-4 p-4 bg-red-100 border border-red-200 rounded">
             <p className="text-sm text-red-700">{deleteResult}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white p-6 rounded-lg shadow-md mb-8">
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">YouTube Diagnostic Tool</h2>
+        <p className="text-gray-600 mb-4">
+          If you're having trouble with YouTube integration, use these tools to inspect and manage your connection.
+        </p>
+        <div className="flex space-x-4">
+          <button
+            onClick={handleRunYouTubeDiagnostic}
+            disabled={isDiagnosingYouTube}
+            className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400"
+          >
+            {isDiagnosingYouTube ? 'Running...' : 'Check Connection'}
+          </button>
+          <button
+            onClick={handleForceDeleteYouTube}
+            disabled={isDeletingYouTube}
+            className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400"
+          >
+            {isDeletingYouTube ? 'Disconnecting...' : 'Force Disconnect'}
+          </button>
+        </div>
+        {youtubeDiagnosticResult && (
+          <div className="mt-4 p-4 bg-gray-100 rounded space-y-4">
+            {youtubeDiagnosticResult.error ? (
+              <div className="text-red-700">
+                <h3 className="font-semibold">Error:</h3>
+                <p>{youtubeDiagnosticResult.error}</p>
+                {youtubeDiagnosticResult.status && (
+                  <p className="text-sm mt-2">Status: {youtubeDiagnosticResult.status}</p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-semibold text-gray-800">Status: {youtubeDiagnosticResult.status}</h3>
+                  <p className="text-gray-600">{youtubeDiagnosticResult.message}</p>
+                </div>
+                
+                {youtubeDiagnosticResult.integration && (
+                  <div>
+                    <h4 className="font-semibold text-gray-700">Integration Details:</h4>
+                    <div className="bg-white p-3 rounded border text-sm">
+                      <p><strong>Connected:</strong> {youtubeDiagnosticResult.integration.is_connected ? 'Yes' : 'No'}</p>
+                      <p><strong>Channel ID:</strong> {youtubeDiagnosticResult.integration.provider_channel_id || 'Not set'}</p>
+                      <p><strong>Channel Title:</strong> {youtubeDiagnosticResult.integration.provider_channel_title || 'Not set'}</p>
+                      <p><strong>Token Expires:</strong> {youtubeDiagnosticResult.integration.provider_token_expires_at ? new Date(youtubeDiagnosticResult.integration.provider_token_expires_at).toLocaleString() : 'Not set'}</p>
+                    </div>
+                  </div>
+                )}
+
+                {youtubeDiagnosticResult.youtube_data && (
+                  <div>
+                    <h4 className="font-semibold text-gray-700">YouTube Data:</h4>
+                    <div className="bg-white p-3 rounded border text-sm">
+                      <p><strong>Channel ID:</strong> {youtubeDiagnosticResult.youtube_data.channel_id}</p>
+                      <p><strong>Channel Title:</strong> {youtubeDiagnosticResult.youtube_data.channel_title}</p>
+                      <p><strong>Subscribers:</strong> {youtubeDiagnosticResult.youtube_data.subscriber_count || 'Hidden'}</p>
+                      <p><strong>Videos:</strong> {youtubeDiagnosticResult.youtube_data.video_count || 'Hidden'}</p>
+                      <p><strong>Total Views:</strong> {youtubeDiagnosticResult.youtube_data.view_count || 'Hidden'}</p>
+                    </div>
+                  </div>
+                )}
+
+                {youtubeDiagnosticResult.api_tests && (
+                  <div>
+                    <h4 className="font-semibold text-gray-700">API Tests:</h4>
+                    <div className="bg-white p-3 rounded border text-sm">
+                      <p><strong>Access Token:</strong> <span className={youtubeDiagnosticResult.api_tests.access_token_valid ? 'text-green-600' : 'text-red-600'}>
+                        {youtubeDiagnosticResult.api_tests.access_token_valid ? '✓ Valid' : '✗ Invalid'}
+                      </span></p>
+                      <p><strong>Channel Info:</strong> <span className={youtubeDiagnosticResult.api_tests.channel_info_accessible ? 'text-green-600' : 'text-red-600'}>
+                        {youtubeDiagnosticResult.api_tests.channel_info_accessible ? '✓ Accessible' : '✗ Not Accessible'}
+                      </span></p>
+                      <p><strong>Videos:</strong> <span className={youtubeDiagnosticResult.api_tests.videos_accessible ? 'text-green-600' : 'text-red-600'}>
+                        {youtubeDiagnosticResult.api_tests.videos_accessible ? '✓ Accessible' : '✗ Not Accessible'}
+                      </span> ({youtubeDiagnosticResult.api_tests.video_count} found)</p>
+                    </div>
+                  </div>
+                )}
+
+                {youtubeDiagnosticResult.data_consistency && (
+                  <div>
+                    <h4 className="font-semibold text-gray-700">Data Consistency:</h4>
+                    <div className="bg-white p-3 rounded border text-sm">
+                      <p><strong>Channel ID Match:</strong> <span className={youtubeDiagnosticResult.data_consistency.channel_id_matches ? 'text-green-600' : 'text-red-600'}>
+                        {youtubeDiagnosticResult.data_consistency.channel_id_matches ? '✓ Match' : '✗ Mismatch'}
+                      </span></p>
+                      <p><strong>Local Channel ID:</strong> {youtubeDiagnosticResult.data_consistency.local_vs_youtube.local_channel_id || 'Not set'}</p>
+                      <p><strong>YouTube Channel ID:</strong> {youtubeDiagnosticResult.data_consistency.local_vs_youtube.youtube_channel_id}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {youtubeDeleteResult && (
+          <div className="mt-4 p-4 bg-red-100 border border-red-200 rounded">
+            <p className="text-sm text-red-700">{youtubeDeleteResult}</p>
           </div>
         )}
       </div>
