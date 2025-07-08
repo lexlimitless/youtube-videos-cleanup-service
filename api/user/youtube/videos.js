@@ -6,6 +6,27 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+async function refreshYouTubeToken(refreshToken) {
+  const params = new URLSearchParams({
+    client_id: process.env.YOUTUBE_CLIENT_ID,
+    client_secret: process.env.YOUTUBE_CLIENT_SECRET,
+    refresh_token: refreshToken,
+    grant_type: 'refresh_token',
+  });
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params,
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to refresh YouTube token');
+  }
+
+  return await response.json(); // contains access_token, expires_in, etc.
+}
+
 async function handler(req, res) {
   const { userId } = req.auth;
   console.log('YouTube Videos API - userId:', userId);
@@ -38,16 +59,44 @@ async function handler(req, res) {
       });
     }
 
-    // Check if access token is still valid
-    if (!integration.provider_access_token || 
-        (integration.provider_token_expires_at && new Date(integration.provider_token_expires_at) < new Date())) {
-      return res.status(400).json({ 
-        error: 'YouTube access token expired',
-        message: 'Please reconnect your YouTube account in the Integrations page.'
-      });
+    // --- Token refresh logic ---
+    const now = new Date();
+    let accessToken = integration.provider_access_token;
+    let expiresAt = integration.provider_token_expires_at ? new Date(integration.provider_token_expires_at) : null;
+
+    // If token is expired or about to expire in the next 2 minutes
+    if (!accessToken || (expiresAt && expiresAt < new Date(now.getTime() + 2 * 60 * 1000))) {
+      if (!integration.provider_refresh_token) {
+        return res.status(400).json({
+          error: 'YouTube refresh token missing',
+          message: 'Please reconnect your YouTube account in the Integrations page.'
+        });
+      }
+      try {
+        const tokenData = await refreshYouTubeToken(integration.provider_refresh_token);
+        accessToken = tokenData.access_token;
+        expiresAt = new Date(now.getTime() + tokenData.expires_in * 1000);
+
+        // Update DB
+        await supabase
+          .from('user_integrations')
+          .update({
+            provider_access_token: accessToken,
+            provider_token_expires_at: expiresAt.toISOString(),
+          })
+          .eq('user_id', userId)
+          .eq('provider', 'youtube');
+        console.log('YouTube Videos API - token refreshed');
+      } catch (err) {
+        console.error('YouTube Videos API - token refresh failed:', err);
+        return res.status(400).json({
+          error: 'YouTube token refresh failed',
+          message: 'Please reconnect your YouTube account in the Integrations page.'
+        });
+      }
     }
 
-    // Fetch videos from YouTube API
+    // --- Use accessToken for YouTube API calls ---
     const youtubeApiUrl = 'https://www.googleapis.com/youtube/v3/search';
     const params = new URLSearchParams({
       part: 'snippet',
@@ -62,11 +111,40 @@ async function handler(req, res) {
       params.append('pageToken', pageToken);
     }
 
-    const youtubeResponse = await fetch(`${youtubeApiUrl}?${params}`, {
+    let youtubeResponse = await fetch(`${youtubeApiUrl}?${params}`, {
       headers: {
-        'Authorization': `Bearer ${integration.provider_access_token}`,
+        'Authorization': `Bearer ${accessToken}`,
       },
     });
+
+    // If unauthorized, try refreshing once more
+    if (youtubeResponse.status === 401 && integration.provider_refresh_token) {
+      try {
+        const tokenData = await refreshYouTubeToken(integration.provider_refresh_token);
+        accessToken = tokenData.access_token;
+        expiresAt = new Date(now.getTime() + tokenData.expires_in * 1000);
+        await supabase
+          .from('user_integrations')
+          .update({
+            provider_access_token: accessToken,
+            provider_token_expires_at: expiresAt.toISOString(),
+          })
+          .eq('user_id', userId)
+          .eq('provider', 'youtube');
+        youtubeResponse = await fetch(`${youtubeApiUrl}?${params}`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+          },
+        });
+        console.log('YouTube Videos API - token refreshed after 401');
+      } catch (err) {
+        console.error('YouTube Videos API - token refresh after 401 failed:', err);
+        return res.status(400).json({
+          error: 'YouTube token refresh failed after 401',
+          message: 'Please reconnect your YouTube account in the Integrations page.'
+        });
+      }
+    }
 
     if (!youtubeResponse.ok) {
       let errorData = {};
@@ -101,7 +179,7 @@ async function handler(req, res) {
 
     const videoDetailsResponse = await fetch(`${videoDetailsUrl}?${videoParams}`, {
       headers: {
-        'Authorization': `Bearer ${integration.provider_access_token}`,
+        'Authorization': `Bearer ${accessToken}`,
       },
     });
 
