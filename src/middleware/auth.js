@@ -2,7 +2,6 @@ import { verifyToken } from '@clerk/backend';
 
 export function withAuth(handler) {
   return async (req, res) => {
-    console.log(`[Auth Middleware] - Starting auth for: ${req.url}`);
     try {
       const token = req.headers.authorization?.split(' ')[1];
       if (!token) {
@@ -17,7 +16,6 @@ export function withAuth(handler) {
       }
       
       const userId = claims.sub;
-      console.log(`[Auth Middleware] - Auth successful for user: ${userId}`);
       
       // Attach the auth details to the request object
       req.auth = { userId }; 
