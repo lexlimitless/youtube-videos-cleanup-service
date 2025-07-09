@@ -1,33 +1,21 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Copy, MoreHorizontal, Download } from 'lucide-react';
 import { format, parseISO, isWithinInterval } from 'date-fns';
-import { Dialog, Menu } from '@headlessui/react';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import { TrackableLink, LinkStats } from '../types/trackableLinks';
 import { createPortal } from 'react-dom';
-import YouTubeVideoGrid from '../components/YouTubeVideoGrid';
+import { useNavigate } from 'react-router-dom';
 
 const platforms = ['YouTube', 'Instagram'];
 const attributionWindows = [1, 7, 14];
 const SHORT_LINK_DOMAIN = import.meta.env.VITE_SHORT_LINK_DOMAIN || 'https://www.pepperlytics.com';
 
-interface YouTubeVideo {
-  id: string;
-  title: string;
-  description: string;
-  thumbnail_url: string;
-  published_at: string;
-  view_count: number;
-  like_count: number;
-  comment_count: number;
-  duration: string;
-  channel_id: string;
-  channel_title: string;
-}
+
 
 export default function TrackableLinks() {
   const { user } = useUser();
   const { getToken } = useAuth();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [dateRange, setDateRange] = useState<{ from: Date | null; to: Date | null }>({
     from: new Date(new Date().setDate(new Date().getDate() - 30)),
@@ -35,30 +23,14 @@ export default function TrackableLinks() {
   });
   const [sortField, setSortField] = useState<'created_at' | 'revenue'>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [showModal, setShowModal] = useState(false);
   const [links, setLinks] = useState<TrackableLink[]>([]);
   const [linkStats, setLinkStats] = useState<Record<string, LinkStats>>({});
   const [visibleRows, setVisibleRows] = useState(10);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editingLink, setEditingLink] = useState<TrackableLink | null>(null);
-  const [deletingLink, setDeletingLink] = useState<TrackableLink | null>(null);
-  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
-  const [menuLinkId, setMenuLinkId] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [menuLink, setMenuLink] = useState<TrackableLink | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-
-  // Modal form state
-  const [form, setForm] = useState({
-    title: '',
-    platform: 'YouTube',
-    url: '',
-    attribution_window_days: 7,
-  });
-
-  // YouTube video selection state
-  const [selectedYouTubeVideo, setSelectedYouTubeVideo] = useState<YouTubeVideo | null>(null);
 
   // Fetch links and stats
   async function fetchLinks() {
@@ -154,50 +126,7 @@ export default function TrackableLinks() {
     }
   };
 
-  // Modal form handlers
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-
-    try {
-      const token = await getToken();
-      if (!token) throw new Error("No auth token");
-
-      // Generate short code
-      let shortCode = Math.floor(Math.random() * 10000).toString();
-
-      // Create link using the API endpoint
-      const response = await fetch('/api/user/links', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          short_code: shortCode,
-          destination_url: form.url,
-          title: form.title || `Untitled Link ${links.length + 1}`,
-          platform: form.platform,
-          attribution_window_days: form.attribution_window_days,
-          youtube_video_id: selectedYouTubeVideo?.id || null,
-        }),
-      });
-
-      const { data: link, error: linkError } = await response.json();
-      if (linkError) throw linkError;
-
-      // Re-fetch links and stats
-      await fetchLinks();
-      setVisibleRows(10);
-      setShowModal(false);
-      setForm({ title: '', platform: 'YouTube', url: '', attribution_window_days: 7 });
-      setSelectedYouTubeVideo(null);
-    } catch (error) {
-      console.error('Error creating link:', error);
-      alert('Failed to create link. Please try again.');
-    }
-  };
 
   // Download QR code
   async function downloadQRCode(url: string, filename: string) {
@@ -250,14 +179,7 @@ export default function TrackableLinks() {
 
   // Edit link
   const handleEdit = (link: TrackableLink) => {
-    setEditingLink(link);
-    setForm({
-      title: link.title,
-      platform: link.platform,
-      url: link.destination_url,
-      attribution_window_days: link.attribution_window_days,
-    });
-    setShowModal(true);
+    navigate(`/links/edit/${link.id}`);
   };
 
   // Delete link
@@ -279,56 +201,7 @@ export default function TrackableLinks() {
     }
   };
 
-  // Save (create or update)
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    try {
-      const token = await getToken();
-      if (!token) throw new Error("No auth token");
 
-      if (editingLink) {
-        // Update existing link
-        const response = await fetch(`/api/user/links?id=${editingLink.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                  body: JSON.stringify({
-          destination_url: form.url,
-          title: form.title,
-          platform: form.platform,
-          attribution_window_days: form.attribution_window_days,
-          youtube_video_id: selectedYouTubeVideo?.id || null,
-        }),
-        });
-        if (!response.ok) throw new Error('Failed to update link');
-      } else {
-        // Create new link
-        let shortCode = Math.floor(Math.random() * 10000).toString();
-        const response = await fetch('/api/user/links', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                  body: JSON.stringify({
-          short_code: shortCode,
-          destination_url: form.url,
-          title: form.title || `Untitled Link ${links.length + 1}`,
-          platform: form.platform,
-          attribution_window_days: form.attribution_window_days,
-          youtube_video_id: selectedYouTubeVideo?.id || null,
-        }),
-        });
-        if (!response.ok) throw new Error('Failed to create link');
-      }
-
-      await fetchLinks();
-      setShowModal(false);
-      setEditingLink(null);
-      setForm({ title: '', platform: 'YouTube', url: '', attribution_window_days: 7 });
-      setSelectedYouTubeVideo(null);
-    } catch (error) {
-      console.error('Error saving link:', error);
-      alert('Failed to save link. Please try again.');
-    }
-  };
 
   if (loading) {
     return (
@@ -366,7 +239,7 @@ export default function TrackableLinks() {
         </div>
         <button
           className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-4 py-2 flex items-center gap-2 shadow-soft font-semibold"
-          onClick={() => setShowModal(true)}
+          onClick={() => navigate('/links/new')}
         >
           + Create Trackable Link
         </button>
@@ -399,7 +272,11 @@ export default function TrackableLinks() {
               <tr key={link.id} className="hover:bg-gray-50">
                 <td className="font-medium text-gray-800 px-2 py-1 text-xs whitespace-nowrap">{link.title}</td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap">
-                  <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${link.platform === 'YouTube' ? 'bg-blue-100 text-blue-700' : 'bg-rose-100 text-rose-700'}`}>{link.platform}</span>
+                  <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${
+                    link.platform === 'YouTube' ? 'bg-blue-100 text-blue-700' : 
+                    link.platform === 'Instagram' ? 'bg-rose-100 text-rose-700' : 
+                    'bg-gray-100 text-gray-700'
+                  }`}>{link.platform || 'Not Set'}</span>
                 </td>
                 <td className="px-2 py-1 text-xs whitespace-nowrap">
                   <div className="flex items-center gap-2">
@@ -485,123 +362,7 @@ export default function TrackableLinks() {
         )}
       </div>
 
-      {/* Modal for creating or editing a trackable link */}
-      <Dialog open={showModal} onClose={() => { setShowModal(false); setEditingLink(null); }} className="fixed inset-0 z-50 flex items-center justify-center">
-        <div className="fixed inset-0 bg-black bg-opacity-40" aria-hidden="true" />
-        <div className="relative bg-white rounded-xl shadow-lg p-8 w-full max-w-4xl mx-auto">
-          <Dialog.Panel>
-            <Dialog.Title className="text-xl font-semibold mb-4">Create Trackable Link</Dialog.Title>
-            <form onSubmit={handleSave} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Title</label>
-                <input
-                  type="text"
-                  name="title"
-                  value={form.title}
-                  onChange={handleFormChange}
-                  placeholder="Optional"
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-200 focus:ring-opacity-50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Platform</label>
-                <select
-                  name="platform"
-                  value={form.platform}
-                  onChange={handleFormChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-200 focus:ring-opacity-50"
-                >
-                  {platforms.map(p => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Destination URL</label>
-                <input
-                  type="url"
-                  name="url"
-                  value={form.url}
-                  onChange={handleFormChange}
-                  required
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-200 focus:ring-opacity-50"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Attribution Window (days)</label>
-                <select
-                  name="attribution_window_days"
-                  value={form.attribution_window_days}
-                  onChange={handleFormChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring focus:ring-emerald-200 focus:ring-opacity-50"
-                >
-                  {attributionWindows.map(days => (
-                    <option key={days} value={days}>{days} days</option>
-                  ))}
-                </select>
-              </div>
 
-              {/* YouTube Video Selection */}
-              {form.platform === 'YouTube' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select YouTube Video (Optional)
-                  </label>
-                  <div className="border border-gray-200 rounded-md p-4 bg-gray-50">
-                    <YouTubeVideoGrid
-                      onVideoSelect={setSelectedYouTubeVideo}
-                      selectedVideo={selectedYouTubeVideo}
-                    />
-                  </div>
-                  {selectedYouTubeVideo && (
-                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                      <div className="flex items-center gap-3">
-                        <img 
-                          src={selectedYouTubeVideo.thumbnail_url} 
-                          alt={selectedYouTubeVideo.title}
-                          className="w-16 h-12 object-cover rounded"
-                        />
-                        <div className="flex-1">
-                          <h4 className="font-medium text-sm text-gray-900 line-clamp-2">
-                            {selectedYouTubeVideo.title}
-                          </h4>
-                          <p className="text-xs text-gray-500">
-                            {selectedYouTubeVideo.view_count.toLocaleString()} views • {new Date(selectedYouTubeVideo.published_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedYouTubeVideo(null)}
-                          className="text-red-500 hover:text-red-700"
-                        >
-                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="flex gap-4 mt-6">
-                <button
-                  type="submit"
-                  className="flex-1 bg-emerald-600 text-white py-2 px-4 rounded-md hover:bg-emerald-700 transition-colors font-semibold"
-                >
-                  {editingLink ? 'Save' : 'Create'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </Dialog.Panel>
-        </div>
-      </Dialog>
     </div>
   );
 } 

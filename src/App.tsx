@@ -4,6 +4,7 @@ import { ClerkProvider, SignIn, SignUp, SignedIn, SignedOut } from '@clerk/clerk
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import TrackableLinks from './pages/TrackableLinks.tsx';
+import TrackableLinkForm from './pages/TrackableLinkForm.tsx';
 import Redirect from './pages/redirect/[shortCode]';
 import Integrations from './pages/Integrations.tsx';
 import QRCodeGenerator from './pages/QRCodeGenerator.tsx';
@@ -72,6 +73,8 @@ export default function App() {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="qr-codes" element={<div>QR Codes</div>} />
             <Route path="links" element={<TrackableLinks />} />
+            <Route path="links/new" element={<TrackableLinkForm />} />
+            <Route path="links/edit/:id" element={<TrackableLinkForm />} />
             <Route path="attribution" element={<div>Attribution Settings</div>} />
             <Route path="integrations" element={<Integrations />} />
             <Route path="integrations/calendly-callback" element={<CalendlyCallback />} />
