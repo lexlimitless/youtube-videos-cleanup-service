@@ -89,25 +89,49 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
 
   // Intersection observer for infinite scroll
   const lastVideoElementRef = useCallback((node: HTMLDivElement) => {
-    if (loading) return;
-    if (observer.current) observer.current.disconnect();
+    console.log('🔍 lastVideoElementRef called with node:', !!node, 'loading:', loading, 'hasMore:', hasMore);
+    
+    if (loading) {
+      console.log('🔍 Skipping observer setup - loading in progress');
+      return;
+    }
+    
+    if (observer.current) {
+      console.log('🔍 Disconnecting previous observer');
+      observer.current.disconnect();
+    }
     
     observer.current = new IntersectionObserver(entries => {
       console.log('🔍 Intersection observer triggered:', {
         isIntersecting: entries[0].isIntersecting,
         hasMore,
         loading,
-        currentOffset: currentOffsetRef.current
+        currentOffset: currentOffsetRef.current,
+        videosLength: videos.length
       });
       
       if (entries[0].isIntersecting && hasMore && !loading) {
-        console.log('🔍 Triggering fetchVideos with offset:', currentOffsetRef.current);
+        console.log('🔍 All conditions met - triggering fetchVideos with offset:', currentOffsetRef.current);
         fetchVideos(currentOffsetRef.current);
+      } else {
+        console.log('🔍 Conditions not met:', {
+          isIntersecting: entries[0].isIntersecting,
+          hasMore,
+          loading,
+          reason: !entries[0].isIntersecting ? 'not intersecting' : 
+                  !hasMore ? 'no more videos' : 
+                  loading ? 'loading in progress' : 'unknown'
+        });
       }
     });
     
-    if (node) observer.current.observe(node);
-  }, [loading, hasMore, fetchVideos]);
+    if (node) {
+      console.log('🔍 Observing node for last video');
+      observer.current.observe(node);
+    } else {
+      console.log('🔍 No node to observe');
+    }
+  }, [loading, hasMore, fetchVideos, videos.length]);
 
   useEffect(() => {
     fetchVideos(0);
@@ -176,18 +200,23 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   return (
     <div className="space-y-4" role="region" aria-label="YouTube video grid">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        {videos.map((video, index) => (
-          <div
-            key={video.id}
-            ref={index === videos.length - 1 ? lastVideoElementRef : undefined}
-          >
-            <YouTubeVideoCard
-              video={video}
-              isSelected={selectedVideo?.id === video.id}
-              onSelect={handleVideoSelect}
-            />
-          </div>
-        ))}
+        {videos.map((video, index) => {
+          const isLastVideo = index === videos.length - 1;
+          console.log(`🔍 Rendering video ${index + 1}/${videos.length}, isLastVideo: ${isLastVideo}`);
+          
+          return (
+            <div
+              key={video.id}
+              ref={isLastVideo ? lastVideoElementRef : undefined}
+            >
+              <YouTubeVideoCard
+                video={video}
+                isSelected={selectedVideo?.id === video.id}
+                onSelect={handleVideoSelect}
+              />
+            </div>
+          );
+        })}
       </div>
 
       {/* Loading indicator */}
@@ -201,11 +230,14 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
       {!loading && hasMore && (
         <div className="flex justify-center py-4">
           <button
-            onClick={() => fetchVideos(currentOffsetRef.current)}
+            onClick={() => {
+              console.log('🔍 Manual Load More clicked - currentOffsetRef:', currentOffsetRef.current);
+              fetchVideos(currentOffsetRef.current);
+            }}
             className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium shadow"
             aria-label="Load more videos"
           >
-            Load More
+            Load More (Manual Test)
           </button>
         </div>
       )}
