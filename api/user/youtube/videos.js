@@ -67,6 +67,8 @@ async function handler(req, res) {
     let cacheIsFresh = false;
     let totalCachedCount = 0;
 
+    console.log('YouTube Videos API - Starting cache check for user:', userId);
+
     // Check cache for all videos (to determine if cache is fresh)
     const { data: allVideosFromDb, error: allDbError } = await supabase
       .from('youtube_videos')
@@ -74,15 +76,50 @@ async function handler(req, res) {
       .eq('user_id', userId)
       .order('published_at', { ascending: false });
 
+    console.log('YouTube Videos API - Database query result:', {
+      totalVideosInDb: allVideosFromDb?.length || 0,
+      dbError: allDbError,
+      requestedOffset: offset,
+      requestedLimit: limit
+    });
+
     if (!allDbError && allVideosFromDb && allVideosFromDb.length > 0) {
       // Check if all videos are fresh (fetched_at within last hour)
-      cacheIsFresh = allVideosFromDb.every(v => v.fetched_at && new Date(v.fetched_at) > oneHourAgo);
+      const freshVideos = allVideosFromDb.filter(v => v.fetched_at && new Date(v.fetched_at) > oneHourAgo);
+      const staleVideos = allVideosFromDb.filter(v => !v.fetched_at || new Date(v.fetched_at) <= oneHourAgo);
+      
+      console.log('YouTube Videos API - Cache freshness check:', {
+        totalVideos: allVideosFromDb.length,
+        freshVideos: freshVideos.length,
+        staleVideos: staleVideos.length,
+        cacheIsFresh: freshVideos.length === allVideosFromDb.length
+      });
+
+      cacheIsFresh = freshVideos.length === allVideosFromDb.length;
       totalCachedCount = allVideosFromDb.length;
       
       if (cacheIsFresh) {
         // Apply offset and limit to cached data
-        cachedVideos = allVideosFromDb.slice(offset, offset + limit);
+        const startIndex = offset;
+        const endIndex = offset + limit;
+        cachedVideos = allVideosFromDb.slice(startIndex, endIndex);
+        
+        console.log('YouTube Videos API - Pagination slice calculation:', {
+          startIndex,
+          endIndex,
+          totalAvailable: allVideosFromDb.length,
+          videosInSlice: cachedVideos.length,
+          remainingVideos: allVideosFromDb.length - endIndex
+        });
+      } else {
+        console.log('YouTube Videos API - Cache is stale, will fetch from YouTube API');
       }
+    } else {
+      console.log('YouTube Videos API - No cached videos found or database error:', {
+        hasVideos: !!allVideosFromDb,
+        videoCount: allVideosFromDb?.length || 0,
+        error: allDbError
+      });
     }
 
     if (cacheIsFresh) {
@@ -116,6 +153,10 @@ async function handler(req, res) {
         videosReturned: formattedVideos.length
       });
       
+      // Log the first few video IDs to verify we're getting different videos per page
+      const videoIds = formattedVideos.slice(0, 3).map(v => v.id);
+      console.log('YouTube Videos API - First 3 video IDs in this page:', videoIds);
+      
       return res.status(200).json({
         videos: formattedVideos,
         offset: offset,
@@ -127,6 +168,7 @@ async function handler(req, res) {
     }
 
     // --- Token refresh logic ---
+    console.log('YouTube Videos API - Cache not fresh or empty, fetching from YouTube API');
     let accessToken = integration.provider_access_token;
     let expiresAt = integration.provider_token_expires_at ? new Date(integration.provider_token_expires_at) : null;
 
