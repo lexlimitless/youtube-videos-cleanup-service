@@ -9,7 +9,7 @@ import YouTubeVideoGrid from '../components/YouTubeVideoGrid';
 
 const platforms = ['YouTube', 'Instagram'];
 const attributionWindows = [1, 7, 14];
-const SHORT_LINK_DOMAIN = import.meta.env.VITE_SHORT_LINK_DOMAIN || 'https://moreclientslesscrickets.com';
+const SHORT_LINK_DOMAIN = import.meta.env.VITE_SHORT_LINK_DOMAIN || 'https://pepperlytics.com';
 
 interface YouTubeVideo {
   id: string;
