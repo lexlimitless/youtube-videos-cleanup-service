@@ -34,16 +34,19 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   const fetchVideos = useCallback(async (currentOffset?: number) => {
     if (loading) return;
 
+    console.log('🔍 fetchVideos called with currentOffset:', currentOffset, 'state offset:', offset);
     setLoading(true);
     setError(null);
 
     try {
       const token = await getToken();
+      const requestOffset = currentOffset ?? offset;
       const params = new URLSearchParams({
         limit: '15',
-        offset: (currentOffset ?? offset).toString(),
+        offset: requestOffset.toString(),
       });
 
+      console.log('🔍 Making API request with offset:', requestOffset);
       const response = await fetch(`/api/user/youtube/videos?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -51,6 +54,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
       });
 
       const data = await response.json();
+      console.log('🔍 API response:', data);
 
       if (!response.ok) {
         if (response.status === 400) {
@@ -61,12 +65,16 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
         return;
       }
 
+      console.log('🔍 Processing response - currentOffset:', currentOffset, 'videos count:', data.videos?.length);
       if (currentOffset && currentOffset > 0) {
+        console.log('🔍 Appending videos to existing list');
         setVideos(prev => [...prev, ...data.videos]);
       } else {
+        console.log('🔍 Setting videos as new list');
         setVideos(data.videos);
       }
 
+      console.log('🔍 Setting offset to:', data.nextOffset, 'hasMore:', data.hasMore);
       setOffset(data.nextOffset ?? 0);
       setHasMore(data.hasMore);
     } catch (err) {
@@ -83,7 +91,15 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
     if (observer.current) observer.current.disconnect();
     
     observer.current = new IntersectionObserver(entries => {
+      console.log('🔍 Intersection observer triggered:', {
+        isIntersecting: entries[0].isIntersecting,
+        hasMore,
+        loading,
+        currentOffset: offset
+      });
+      
       if (entries[0].isIntersecting && hasMore && !loading) {
+        console.log('🔍 Triggering fetchVideos with offset:', offset);
         fetchVideos(offset);
       }
     });

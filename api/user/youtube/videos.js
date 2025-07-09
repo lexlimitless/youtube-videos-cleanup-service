@@ -87,6 +87,8 @@ async function handler(req, res) {
 
     if (cacheIsFresh) {
       console.log('YouTube Videos API - returning cached videos:', cachedVideos.length, 'offset:', offset);
+      console.log('YouTube Videos API - totalCachedCount:', totalCachedCount, 'limit:', limit);
+      
       // Return cached videos with pagination info
       const formattedVideos = cachedVideos.map(video => ({
         id: video.youtube_video_id,
@@ -104,6 +106,15 @@ async function handler(req, res) {
       
       const hasMore = offset + limit < totalCachedCount;
       const nextOffset = hasMore ? offset + limit : null;
+      
+      console.log('YouTube Videos API - pagination calculation:', {
+        offset,
+        limit,
+        totalCachedCount,
+        hasMore,
+        nextOffset,
+        videosReturned: formattedVideos.length
+      });
       
       return res.status(200).json({
         videos: formattedVideos,
