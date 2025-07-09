@@ -34,7 +34,7 @@ export default function Sidebar() {
     <div className="flex h-full flex-col bg-[#15342b] text-white w-64">
       {/* Logo */}
       <div className="flex h-16 items-center px-6">
-        <h1 className="text-xl font-bold">LinkTracker</h1>
+        <h1 className="text-xl font-bold">Pepperlytics</h1>
       </div>
 
       {/* Navigation */}

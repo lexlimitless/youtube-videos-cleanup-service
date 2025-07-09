@@ -39,6 +39,7 @@ async function handler(req, res) {
   try {
     const pageToken = req.query.pageToken;
     const limit = req.query.limit ? parseInt(req.query.limit) : 15;
+    console.log('YouTube Videos API - pageToken:', pageToken, 'limit:', limit);
 
     // Check if user has YouTube integration
     const { data: integration, error: integrationError } = await supabase
@@ -73,6 +74,7 @@ async function handler(req, res) {
         .eq('user_id', userId)
         .order('published_at', { ascending: false })
         .limit(limit);
+      console.log('YouTube Videos API - videosFromDb count:', videosFromDb?.length, 'dbError:', dbError);
       if (!dbError && videosFromDb && videosFromDb.length > 0) {
         // Check if all videos are fresh (fetched_at within last hour)
         cacheIsFresh = videosFromDb.every(v => v.fetched_at && new Date(v.fetched_at) > oneHourAgo);
@@ -83,6 +85,7 @@ async function handler(req, res) {
     }
 
     if (cacheIsFresh) {
+      console.log('YouTube Videos API - returning cached videos:', cachedVideos.length);
       // Return cached videos
       const formattedVideos = cachedVideos.map(video => ({
         id: video.youtube_video_id,
@@ -161,6 +164,7 @@ async function handler(req, res) {
     if (!playlistRes.ok || !playlistData.items) {
       return res.status(500).json({ error: 'Failed to fetch playlist videos', message: 'Could not get videos from uploads playlist.' });
     }
+    console.log('YouTube Videos API - fetched from YouTube API:', playlistData.items.length, 'videos');
     const videos = playlistData.items.map(item => ({
       user_id: userId,
       youtube_video_id: item.contentDetails.videoId,
@@ -174,7 +178,8 @@ async function handler(req, res) {
     }));
 
     // 3. Upsert these 50 videos into Supabase
-    await supabase.from('youtube_videos').upsert(videos, { onConflict: 'user_id,youtube_video_id', ignoreDuplicates: false });
+    const upsertResult = await supabase.from('youtube_videos').upsert(videos, { onConflict: 'user_id,youtube_video_id', ignoreDuplicates: false });
+    console.log('YouTube Videos API - upserted videos, result:', upsertResult);
 
     // 4. Fetch detailed stats for the first 15 videos
     const videoIds = videos.slice(0, 15).map(v => v.youtube_video_id).join(',');
@@ -198,6 +203,7 @@ async function handler(req, res) {
       channel_id: item.snippet.channelId,
       channel_title: item.snippet.channelTitle,
     }));
+    console.log('YouTube Videos API - returning', detailedVideos.length, 'detailed videos');
 
     return res.status(200).json({
       videos: detailedVideos,
