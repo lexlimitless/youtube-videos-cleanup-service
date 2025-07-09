@@ -30,6 +30,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   const { getToken } = useAuth();
   const observer = useRef<IntersectionObserver>();
   const loadingRef = useRef<HTMLDivElement>(null);
+  const currentOffsetRef = useRef<number>(0);
 
   const fetchVideos = useCallback(async (currentOffset?: number) => {
     if (loading) return;
@@ -40,7 +41,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
 
     try {
       const token = await getToken();
-      const requestOffset = currentOffset ?? offset;
+      const requestOffset = currentOffset ?? currentOffsetRef.current;
       const params = new URLSearchParams({
         limit: '15',
         offset: requestOffset.toString(),
@@ -76,6 +77,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
 
       console.log('🔍 Setting offset to:', data.nextOffset, 'hasMore:', data.hasMore);
       setOffset(data.nextOffset ?? 0);
+      currentOffsetRef.current = data.nextOffset ?? 0;
       setHasMore(data.hasMore);
     } catch (err) {
       setError('An unexpected error occurred');
@@ -95,17 +97,17 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
         isIntersecting: entries[0].isIntersecting,
         hasMore,
         loading,
-        currentOffset: offset
+        currentOffset: currentOffsetRef.current
       });
       
       if (entries[0].isIntersecting && hasMore && !loading) {
-        console.log('🔍 Triggering fetchVideos with offset:', offset);
-        fetchVideos(offset);
+        console.log('🔍 Triggering fetchVideos with offset:', currentOffsetRef.current);
+        fetchVideos(currentOffsetRef.current);
       }
     });
     
     if (node) observer.current.observe(node);
-  }, [loading, hasMore, offset, fetchVideos]);
+  }, [loading, hasMore, fetchVideos]);
 
   useEffect(() => {
     fetchVideos(0);
@@ -199,7 +201,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
       {!loading && hasMore && (
         <div className="flex justify-center py-4">
           <button
-            onClick={() => fetchVideos(offset)}
+            onClick={() => fetchVideos(currentOffsetRef.current)}
             className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium shadow"
             aria-label="Load more videos"
           >
