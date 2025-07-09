@@ -142,152 +142,68 @@ async function handler(req, res) {
       }
     }
 
-    // --- Use accessToken for YouTube API calls ---
-    const youtubeApiUrl = 'https://www.googleapis.com/youtube/v3/search';
-    const params = new URLSearchParams({
-      part: 'snippet',
-      channelId: integration.provider_channel_id,
-      order: 'date',
-      type: 'video',
-      maxResults: limit.toString(),
-      key: process.env.YOUTUBE_API_KEY
+    // --- Efficient YouTube API calls ---
+    // 1. Get uploads playlist ID
+    const channelsRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=contentDetails&mine=true`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
-
-    if (pageToken) {
-      params.append('pageToken', pageToken);
+    const channelsData = await channelsRes.json();
+    if (!channelsRes.ok || !channelsData.items || !channelsData.items[0]) {
+      return res.status(500).json({ error: 'Failed to fetch channel details', message: 'Could not get uploads playlist ID.' });
     }
+    const uploadsPlaylistId = channelsData.items[0].contentDetails.relatedPlaylists.uploads;
 
-    let youtubeResponse = await fetch(`${youtubeApiUrl}?${params}`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
+    // 2. Fetch up to 50 videos from uploads playlist
+    const playlistRes = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${uploadsPlaylistId}&maxResults=50`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
-
-    // If unauthorized, try refreshing once more
-    if (youtubeResponse.status === 401 && integration.provider_refresh_token) {
-      try {
-        const tokenData = await refreshYouTubeToken(integration.provider_refresh_token);
-        accessToken = tokenData.access_token;
-        expiresAt = new Date(now.getTime() + tokenData.expires_in * 1000);
-        await supabase
-          .from('user_integrations')
-          .update({
-            provider_access_token: accessToken,
-            provider_token_expires_at: expiresAt.toISOString(),
-          })
-          .eq('user_id', userId)
-          .eq('provider', 'youtube');
-        youtubeResponse = await fetch(`${youtubeApiUrl}?${params}`, {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-          },
-        });
-        console.log('YouTube Videos API - token refreshed after 401');
-      } catch (err) {
-        console.error('YouTube Videos API - token refresh after 401 failed:', err);
-        return res.status(400).json({
-          error: 'YouTube token refresh failed after 401',
-          message: 'Please reconnect your YouTube account in the Integrations page.'
-        });
-      }
+    const playlistData = await playlistRes.json();
+    if (!playlistRes.ok || !playlistData.items) {
+      return res.status(500).json({ error: 'Failed to fetch playlist videos', message: 'Could not get videos from uploads playlist.' });
     }
-
-    if (!youtubeResponse.ok) {
-      let errorData = {};
-      try { errorData = await youtubeResponse.json(); } catch (e) {}
-      console.error('YouTube API error:', errorData);
-      
-      if (youtubeResponse.status === 401) {
-        return res.status(400).json({ 
-          error: 'YouTube access token invalid',
-          message: 'Please reconnect your YouTube account in the Integrations page.'
-        });
-      }
-      
-      return res.status(500).json({ 
-        error: 'Failed to fetch videos from YouTube',
-        message: 'There was an error fetching your videos. Please try again later.'
-      });
-    }
-
-    const youtubeData = await youtubeResponse.json();
-
-    // Get video IDs for detailed information
-    const videoIds = youtubeData.items.map(item => item.id.videoId).join(',');
-
-    // Fetch detailed video information
-    const videoDetailsUrl = 'https://www.googleapis.com/youtube/v3/videos';
-    const videoParams = new URLSearchParams({
-      part: 'snippet,statistics,contentDetails',
-      id: videoIds,
-      key: process.env.YOUTUBE_API_KEY
-    });
-
-    const videoDetailsResponse = await fetch(`${videoDetailsUrl}?${videoParams}`, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
-    });
-
-    if (!videoDetailsResponse.ok) {
-      return res.status(500).json({ 
-        error: 'Failed to fetch video details',
-        message: 'There was an error fetching video details. Please try again later.'
-      });
-    }
-
-    const videoDetailsData = await videoDetailsResponse.json();
-
-    // Process and store videos in database
-    const videos = videoDetailsData.items.map(video => ({
+    const videos = playlistData.items.map(item => ({
       user_id: userId,
-      youtube_video_id: video.id,
-      title: video.snippet.title,
-      description: video.snippet.description,
-      thumbnail_url: (video.snippet.thumbnails && video.snippet.thumbnails.high && video.snippet.thumbnails.high.url) || (video.snippet.thumbnails && video.snippet.thumbnails.medium && video.snippet.thumbnails.medium.url) || '',
-      published_at: video.snippet.publishedAt,
-      view_count: parseInt(video.statistics.viewCount) || 0,
-      like_count: parseInt(video.statistics.likeCount) || 0,
-      comment_count: parseInt(video.statistics.commentCount) || 0,
-      duration: video.contentDetails.duration,
-      channel_id: video.snippet.channelId,
-      channel_title: video.snippet.channelTitle,
-      fetched_at: now.toISOString(), // Use the existing now variable
+      youtube_video_id: item.contentDetails.videoId,
+      title: item.snippet.title,
+      description: item.snippet.description,
+      thumbnail_url: item.snippet.thumbnails?.high?.url || '',
+      published_at: item.contentDetails.videoPublishedAt,
+      channel_id: item.snippet.channelId,
+      channel_title: item.snippet.channelTitle,
+      fetched_at: now.toISOString(),
     }));
 
-    // Upsert videos to database (update if exists, insert if not)
-    const { error: upsertError } = await supabase
-      .from('youtube_videos')
-      .upsert(videos, { 
-        onConflict: 'user_id,youtube_video_id',
-        ignoreDuplicates: false 
-      });
+    // 3. Upsert these 50 videos into Supabase
+    await supabase.from('youtube_videos').upsert(videos, { onConflict: 'user_id,youtube_video_id', ignoreDuplicates: false });
 
-    if (upsertError) {
-      console.error('Database upsert error:', upsertError);
-      // Continue even if database update fails, return the data anyway
+    // 4. Fetch detailed stats for the first 15 videos
+    const videoIds = videos.slice(0, 15).map(v => v.youtube_video_id).join(',');
+    const statsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoIds}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const statsData = await statsRes.json();
+    if (!statsRes.ok || !statsData.items) {
+      return res.status(500).json({ error: 'Failed to fetch video details', message: 'Could not get video stats.' });
     }
-
-    // Return formatted response
-    const formattedVideos = videos.map(video => ({
-      id: video.youtube_video_id,
-      title: video.title,
-      description: video.description,
-      thumbnail_url: video.thumbnail_url,
-      published_at: video.published_at,
-      view_count: video.view_count,
-      like_count: video.like_count,
-      comment_count: video.comment_count,
-      duration: video.duration,
-      channel_id: video.channel_id,
-      channel_title: video.channel_title,
+    const detailedVideos = statsData.items.map(item => ({
+      id: item.id,
+      title: item.snippet.title,
+      description: item.snippet.description,
+      thumbnail_url: item.snippet.thumbnails?.high?.url || '',
+      published_at: item.snippet.publishedAt,
+      view_count: parseInt(item.statistics.viewCount) || 0,
+      like_count: parseInt(item.statistics.likeCount) || 0,
+      comment_count: parseInt(item.statistics.commentCount) || 0,
+      duration: item.contentDetails.duration,
+      channel_id: item.snippet.channelId,
+      channel_title: item.snippet.channelTitle,
     }));
 
     return res.status(200).json({
-      videos: formattedVideos,
-      nextPageToken: youtubeData.nextPageToken,
-      hasMore: !!youtubeData.nextPageToken,
-      totalResults: youtubeData.pageInfo && youtubeData.pageInfo.totalResults ? youtubeData.pageInfo.totalResults : 0,
+      videos: detailedVideos,
+      nextPageToken: null,
+      hasMore: false,
+      totalResults: detailedVideos.length,
       cached: false,
     });
 
