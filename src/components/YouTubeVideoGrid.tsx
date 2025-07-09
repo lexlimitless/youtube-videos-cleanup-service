@@ -28,17 +28,13 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState<number>(0);
   const { getToken } = useAuth();
-  const observer = useRef<IntersectionObserver>();
-  const loadingRef = useRef<HTMLDivElement>(null);
+  const lastVideoElement = useRef<HTMLDivElement | null>(null);
   const currentOffsetRef = useRef<number>(0);
 
   const fetchVideos = useCallback(async (currentOffset?: number) => {
     if (loading) return;
-
-    console.log('🔍 fetchVideos called with currentOffset:', currentOffset, 'state offset:', offset);
     setLoading(true);
     setError(null);
-
     try {
       const token = await getToken();
       const requestOffset = currentOffset ?? currentOffsetRef.current;
@@ -46,17 +42,12 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
         limit: '15',
         offset: requestOffset.toString(),
       });
-
-      console.log('🔍 Making API request with offset:', requestOffset);
       const response = await fetch(`/api/user/youtube/videos?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       });
-
       const data = await response.json();
-      console.log('🔍 API response:', data);
-
       if (!response.ok) {
         if (response.status === 400) {
           setError(data.message || 'YouTube integration not connected');
@@ -65,17 +56,11 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
         }
         return;
       }
-
-      console.log('🔍 Processing response - currentOffset:', currentOffset, 'videos count:', data.videos?.length);
-      if (currentOffset && currentOffset > 0) {
-        console.log('🔍 Appending videos to existing list');
+      if (requestOffset > 0) {
         setVideos(prev => [...prev, ...data.videos]);
       } else {
-        console.log('🔍 Setting videos as new list');
         setVideos(data.videos);
       }
-
-      console.log('🔍 Setting offset to:', data.nextOffset, 'hasMore:', data.hasMore);
       setOffset(data.nextOffset ?? 0);
       currentOffsetRef.current = data.nextOffset ?? 0;
       setHasMore(data.hasMore);
@@ -85,57 +70,39 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
     } finally {
       setLoading(false);
     }
-  }, [loading, getToken, offset]);
+  }, [loading, getToken]);
 
-  // Intersection observer for infinite scroll
-  const lastVideoElementRef = useCallback((node: HTMLDivElement) => {
-    console.log('🔍 lastVideoElementRef called with node:', !!node, 'loading:', loading, 'hasMore:', hasMore);
-    
-    if (loading) {
-      console.log('🔍 Skipping observer setup - loading in progress');
+  // Attach intersection observer to last video element
+  useEffect(() => {
+    console.log('🔍 [useEffect] videos.length:', videos.length, 'loading:', loading, 'hasMore:', hasMore);
+    if (loading || !hasMore) {
+      console.log('🔍 [useEffect] Not attaching observer: loading or no more videos');
       return;
     }
-    
-    if (observer.current) {
-      console.log('🔍 Disconnecting previous observer');
-      observer.current.disconnect();
+    const node = lastVideoElement.current;
+    if (!node) {
+      console.log('🔍 [useEffect] No node to observe');
+      return;
     }
-    
-    observer.current = new IntersectionObserver(entries => {
-      console.log('🔍 Intersection observer triggered:', {
-        isIntersecting: entries[0].isIntersecting,
-        hasMore,
-        loading,
-        currentOffset: currentOffsetRef.current,
-        videosLength: videos.length
-      });
-      
-      if (entries[0].isIntersecting && hasMore && !loading) {
-        console.log('🔍 All conditions met - triggering fetchVideos with offset:', currentOffsetRef.current);
+    console.log('🔍 [useEffect] Attaching observer to node:', node);
+    const observer = new window.IntersectionObserver(entries => {
+      console.log('🔍 [IntersectionObserver] entries:', entries, 'loading:', loading, 'hasMore:', hasMore);
+      if (entries[0].isIntersecting && !loading && hasMore) {
+        console.log('🔍 [IntersectionObserver] Triggering fetchVideos with offset:', currentOffsetRef.current);
         fetchVideos(currentOffsetRef.current);
-      } else {
-        console.log('🔍 Conditions not met:', {
-          isIntersecting: entries[0].isIntersecting,
-          hasMore,
-          loading,
-          reason: !entries[0].isIntersecting ? 'not intersecting' : 
-                  !hasMore ? 'no more videos' : 
-                  loading ? 'loading in progress' : 'unknown'
-        });
       }
     });
-    
-    if (node) {
-      console.log('🔍 Observing node for last video');
-      observer.current.observe(node);
-    } else {
-      console.log('🔍 No node to observe');
-    }
-  }, [loading, hasMore, fetchVideos, videos.length]);
+    observer.observe(node);
+    return () => {
+      console.log('🔍 [useEffect] Detaching observer from node:', node);
+      observer.disconnect();
+    };
+  }, [videos.length, loading, hasMore, fetchVideos]);
 
   useEffect(() => {
     fetchVideos(0);
-  }, [fetchVideos]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleVideoSelect = (video: YouTubeVideo) => {
     if (selectedVideo?.id === video.id) {
@@ -148,6 +115,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   const handleRetry = () => {
     setError(null);
     setOffset(0);
+    currentOffsetRef.current = 0;
     fetchVideos(0);
   };
 
@@ -200,48 +168,37 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   return (
     <div className="space-y-4" role="region" aria-label="YouTube video grid">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        {videos.map((video, index) => {
-          const isLastVideo = index === videos.length - 1;
-          console.log(`🔍 Rendering video ${index + 1}/${videos.length}, isLastVideo: ${isLastVideo}`);
-          
-          return (
-            <div
-              key={video.id}
-              ref={isLastVideo ? lastVideoElementRef : undefined}
-            >
-              <YouTubeVideoCard
-                video={video}
-                isSelected={selectedVideo?.id === video.id}
-                onSelect={handleVideoSelect}
-              />
-            </div>
-          );
-        })}
+        {videos.map((video, index) => (
+          <div
+            key={video.id}
+            ref={index === videos.length - 1 ? lastVideoElement : undefined}
+          >
+            <YouTubeVideoCard
+              video={video}
+              isSelected={selectedVideo?.id === video.id}
+              onSelect={handleVideoSelect}
+            />
+          </div>
+        ))}
       </div>
-
       {/* Loading indicator */}
       {loading && (
-        <div ref={loadingRef} className="flex justify-center py-6">
+        <div className="flex justify-center py-6">
           <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-500"></div>
         </div>
       )}
-
       {/* Fallback Load More button */}
       {!loading && hasMore && (
         <div className="flex justify-center py-4">
           <button
-            onClick={() => {
-              console.log('🔍 Manual Load More clicked - currentOffsetRef:', currentOffsetRef.current);
-              fetchVideos(currentOffsetRef.current);
-            }}
+            onClick={() => fetchVideos(currentOffsetRef.current)}
             className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium shadow"
             aria-label="Load more videos"
           >
-            Load More (Manual Test)
+            Load More
           </button>
         </div>
       )}
-
       {/* End of results */}
       {!hasMore && videos.length > 0 && (
         <div className="text-center py-4 text-gray-500 text-sm">
