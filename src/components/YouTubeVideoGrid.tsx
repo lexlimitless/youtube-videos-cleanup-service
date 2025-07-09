@@ -26,12 +26,12 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [offset, setOffset] = useState<number>(0);
   const { getToken } = useAuth();
   const observer = useRef<IntersectionObserver>();
   const loadingRef = useRef<HTMLDivElement>(null);
 
-  const fetchVideos = useCallback(async (pageToken?: string) => {
+  const fetchVideos = useCallback(async (currentOffset?: number) => {
     if (loading) return;
 
     setLoading(true);
@@ -41,7 +41,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
       const token = await getToken();
       const params = new URLSearchParams({
         limit: '15',
-        ...(pageToken && { pageToken }),
+        offset: (currentOffset ?? offset).toString(),
       });
 
       const response = await fetch(`/api/user/youtube/videos?${params}`, {
@@ -61,13 +61,13 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
         return;
       }
 
-      if (pageToken) {
+      if (currentOffset && currentOffset > 0) {
         setVideos(prev => [...prev, ...data.videos]);
       } else {
         setVideos(data.videos);
       }
 
-      setNextPageToken(data.nextPageToken);
+      setOffset(data.nextOffset ?? 0);
       setHasMore(data.hasMore);
     } catch (err) {
       setError('An unexpected error occurred');
@@ -75,7 +75,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
     } finally {
       setLoading(false);
     }
-  }, [loading, getToken]);
+  }, [loading, getToken, offset]);
 
   // Intersection observer for infinite scroll
   const lastVideoElementRef = useCallback((node: HTMLDivElement) => {
@@ -84,15 +84,15 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
     
     observer.current = new IntersectionObserver(entries => {
       if (entries[0].isIntersecting && hasMore && !loading) {
-        fetchVideos(nextPageToken || undefined);
+        fetchVideos(offset);
       }
     });
     
     if (node) observer.current.observe(node);
-  }, [loading, hasMore, nextPageToken, fetchVideos]);
+  }, [loading, hasMore, offset, fetchVideos]);
 
   useEffect(() => {
-    fetchVideos();
+    fetchVideos(0);
   }, [fetchVideos]);
 
   const handleVideoSelect = (video: YouTubeVideo) => {
@@ -105,7 +105,8 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
 
   const handleRetry = () => {
     setError(null);
-    fetchVideos();
+    setOffset(0);
+    fetchVideos(0);
   };
 
   const handleGoToIntegrations = () => {
@@ -182,7 +183,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
       {!loading && hasMore && (
         <div className="flex justify-center py-4">
           <button
-            onClick={() => fetchVideos(nextPageToken || undefined)}
+            onClick={() => fetchVideos(offset)}
             className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium shadow"
             aria-label="Load more videos"
           >

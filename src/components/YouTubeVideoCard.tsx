@@ -22,6 +22,8 @@ interface YouTubeVideoCardProps {
 
 function formatDuration(isoDuration: string): string {
   // Parse ISO 8601 duration to hh:mm:ss or mm:ss
+  if (!isoDuration) return '';
+  
   const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
   if (!match) return '';
   const [, h, m, s] = match.map(x => parseInt(x || '0', 10));
@@ -33,6 +35,7 @@ export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTub
   const [showDesc, setShowDesc] = useState(false);
 
   const formatViewCount = (count: number): string => {
+    if (!count || count < 0) return '0 views';
     if (count >= 1000000) {
       return `${(count / 1000000).toFixed(1)}M views`;
     } else if (count >= 1000) {
@@ -42,7 +45,11 @@ export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTub
   };
 
   const formatDate = (dateString: string): string => {
+    if (!dateString) return 'Unknown date';
+    
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'Invalid date';
+    
     const now = new Date();
     const diffInDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
     if (diffInDays === 0) {
@@ -88,23 +95,23 @@ export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTub
       {/* Thumbnail (16:9) */}
       <div className="relative aspect-w-16 aspect-h-9 bg-gray-200">
         <img 
-          src={video.thumbnail_url} 
-          alt={video.title}
+          src={video.thumbnail_url || ''} 
+          alt={video.title || 'Video thumbnail'}
           className="w-full h-full object-cover"
         />
         <div className="absolute bottom-1 right-1 bg-black bg-opacity-75 text-white text-xs px-1 py-0.5 rounded">
-          {formatDuration(video.duration)}
+          {formatDuration(video.duration || '')}
         </div>
       </div>
 
       {/* Video info */}
       <div className="p-3">
-        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 mb-2 leading-tight" title={video.title}>
-          {video.title}
+        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 mb-2 leading-tight" title={video.title || ''}>
+          {video.title || 'Untitled Video'}
         </h3>
         <div className="flex flex-col text-xs text-gray-500 mt-2">
-          <span>{formatViewCount(video.view_count)}</span>
-          <span>{formatDate(video.published_at)}</span>
+          <span>{formatViewCount(video.view_count || 0)}</span>
+          <span>{formatDate(video.published_at || '')}</span>
         </div>
         {/* Description on hover/click */}
         <div className="mt-2 text-xs text-gray-400">
@@ -117,7 +124,7 @@ export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTub
             tabIndex={-1}
             aria-label="Show description"
           >
-            {showDesc ? video.description : 'Show description'}
+            {showDesc ? (video.description || 'No description available') : 'Show description'}
           </button>
         </div>
       </div>

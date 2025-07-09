@@ -37,9 +37,9 @@ async function handler(req, res) {
   }
 
   try {
-    const pageToken = req.query.pageToken;
+    const offset = req.query.offset ? parseInt(req.query.offset) : 0;
     const limit = req.query.limit ? parseInt(req.query.limit) : 15;
-    console.log('YouTube Videos API - pageToken:', pageToken, 'limit:', limit);
+    console.log('YouTube Videos API - offset:', offset, 'limit:', limit);
 
     // Check if user has YouTube integration
     const { data: integration, error: integrationError } = await supabase
@@ -60,33 +60,34 @@ async function handler(req, res) {
       });
     }
 
-    // --- Caching logic ---
+    // --- Caching logic with offset-based pagination ---
     const now = new Date();
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     let cachedVideos = [];
     let cacheIsFresh = false;
+    let totalCachedCount = 0;
 
-    // Only use cache if not paginating (first page)
-    if (!pageToken) {
-      const { data: videosFromDb, error: dbError } = await supabase
-        .from('youtube_videos')
-        .select('*')
-        .eq('user_id', userId)
-        .order('published_at', { ascending: false })
-        .limit(limit);
-      console.log('YouTube Videos API - videosFromDb count:', videosFromDb?.length, 'dbError:', dbError);
-      if (!dbError && videosFromDb && videosFromDb.length > 0) {
-        // Check if all videos are fresh (fetched_at within last hour)
-        cacheIsFresh = videosFromDb.every(v => v.fetched_at && new Date(v.fetched_at) > oneHourAgo);
-        if (cacheIsFresh) {
-          cachedVideos = videosFromDb;
-        }
+    // Check cache for all videos (to determine if cache is fresh)
+    const { data: allVideosFromDb, error: allDbError } = await supabase
+      .from('youtube_videos')
+      .select('*')
+      .eq('user_id', userId)
+      .order('published_at', { ascending: false });
+
+    if (!allDbError && allVideosFromDb && allVideosFromDb.length > 0) {
+      // Check if all videos are fresh (fetched_at within last hour)
+      cacheIsFresh = allVideosFromDb.every(v => v.fetched_at && new Date(v.fetched_at) > oneHourAgo);
+      totalCachedCount = allVideosFromDb.length;
+      
+      if (cacheIsFresh) {
+        // Apply offset and limit to cached data
+        cachedVideos = allVideosFromDb.slice(offset, offset + limit);
       }
     }
 
     if (cacheIsFresh) {
-      console.log('YouTube Videos API - returning cached videos:', cachedVideos.length);
-      // Return cached videos
+      console.log('YouTube Videos API - returning cached videos:', cachedVideos.length, 'offset:', offset);
+      // Return cached videos with pagination info
       const formattedVideos = cachedVideos.map(video => ({
         id: video.youtube_video_id,
         title: video.title,
@@ -100,11 +101,16 @@ async function handler(req, res) {
         channel_id: video.channel_id,
         channel_title: video.channel_title,
       }));
+      
+      const hasMore = offset + limit < totalCachedCount;
+      const nextOffset = hasMore ? offset + limit : null;
+      
       return res.status(200).json({
         videos: formattedVideos,
-        nextPageToken: null,
-        hasMore: false,
-        totalResults: formattedVideos.length,
+        offset: offset,
+        nextOffset: nextOffset,
+        hasMore: hasMore,
+        totalResults: totalCachedCount,
         cached: true,
       });
     }
@@ -207,7 +213,8 @@ async function handler(req, res) {
 
     return res.status(200).json({
       videos: detailedVideos,
-      nextPageToken: null,
+      offset: 0,
+      nextOffset: null,
       hasMore: false,
       totalResults: detailedVideos.length,
       cached: false,
