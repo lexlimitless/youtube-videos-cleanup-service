@@ -33,3 +33,6 @@ CREATE POLICY "Users can view their own youtube videos"
 --   ON youtube_videos
 --   FOR DELETE
 --   USING (user_id = auth.uid()); 
+
+-- Add youtube_next_page_token to user_integrations for robust YouTube pagination
+ALTER TABLE user_integrations ADD COLUMN IF NOT EXISTS youtube_next_page_token TEXT; 
