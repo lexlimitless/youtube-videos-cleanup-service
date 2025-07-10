@@ -27,21 +27,27 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState<number>(0);
+  const [youtubePageToken, setYoutubePageToken] = useState<string | null>(null);
   const { getToken } = useAuth();
   const lastVideoElement = useRef<HTMLDivElement | null>(null);
   const currentOffsetRef = useRef<number>(0);
+  const currentPageTokenRef = useRef<string | null>(null);
 
-  const fetchVideos = useCallback(async (currentOffset?: number) => {
+  const fetchVideos = useCallback(async (currentOffset?: number, pageToken?: string | null) => {
     if (loading) return;
     setLoading(true);
     setError(null);
     try {
       const token = await getToken();
       const requestOffset = currentOffset ?? currentOffsetRef.current;
+      const requestPageToken = pageToken ?? currentPageTokenRef.current;
       const params = new URLSearchParams({
         limit: '15',
         offset: requestOffset.toString(),
       });
+      if (requestPageToken) {
+        params.append('youtubePageToken', requestPageToken);
+      }
       const response = await fetch(`/api/user/youtube/videos?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -56,7 +62,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
         }
         return;
       }
-      if (requestOffset > 0) {
+      if (requestOffset > 0 || requestPageToken) {
         setVideos(prev => [...prev, ...data.videos]);
       } else {
         setVideos(data.videos);
@@ -64,6 +70,8 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
       setOffset(data.nextOffset ?? 0);
       currentOffsetRef.current = data.nextOffset ?? 0;
       setHasMore(data.hasMore);
+      setYoutubePageToken(data.youtubePageToken || null);
+      currentPageTokenRef.current = data.youtubePageToken || null;
     } catch (err) {
       setError('An unexpected error occurred');
       console.error('Error fetching videos:', err);
@@ -88,8 +96,8 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
     const observer = new window.IntersectionObserver(entries => {
       console.log('🔍 [IntersectionObserver] entries:', entries, 'loading:', loading, 'hasMore:', hasMore);
       if (entries[0].isIntersecting && !loading && hasMore) {
-        console.log('🔍 [IntersectionObserver] Triggering fetchVideos with offset:', currentOffsetRef.current);
-        fetchVideos(currentOffsetRef.current);
+        console.log('🔍 [IntersectionObserver] Triggering fetchVideos with offset:', currentOffsetRef.current, 'pageToken:', currentPageTokenRef.current);
+        fetchVideos(currentOffsetRef.current, currentPageTokenRef.current);
       }
     });
     observer.observe(node);
@@ -100,7 +108,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   }, [videos.length, loading, hasMore, fetchVideos]);
 
   useEffect(() => {
-    fetchVideos(0);
+    fetchVideos(0, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -115,8 +123,10 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   const handleRetry = () => {
     setError(null);
     setOffset(0);
+    setYoutubePageToken(null);
     currentOffsetRef.current = 0;
-    fetchVideos(0);
+    currentPageTokenRef.current = null;
+    fetchVideos(0, null);
   };
 
   const handleGoToIntegrations = () => {
@@ -191,7 +201,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
       {!loading && hasMore && (
         <div className="flex justify-center py-4">
           <button
-            onClick={() => fetchVideos(currentOffsetRef.current)}
+            onClick={() => fetchVideos(currentOffsetRef.current, currentPageTokenRef.current)}
             className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-md text-sm font-medium shadow"
             aria-label="Load more videos"
           >
