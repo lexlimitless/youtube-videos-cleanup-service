@@ -77,6 +77,9 @@ async function handler(req, res) {
       .eq('user_id', userId)
       .order('published_at', { ascending: false });
 
+    // Get the stored next page token from user_integrations
+    let storedNextPageToken = integration.youtube_next_page_token || null;
+
     console.log('YouTube Videos API - Database query result:', {
       totalVideosInDb: allVideosFromDb?.length || 0,
       dbError: allDbError,
@@ -100,18 +103,35 @@ async function handler(req, res) {
       totalCachedCount = allVideosFromDb.length;
       
       if (cacheIsFresh) {
-        // Apply offset and limit to cached data
         const startIndex = offset;
         const endIndex = offset + limit;
         cachedVideos = allVideosFromDb.slice(startIndex, endIndex);
-        
-        console.log('YouTube Videos API - Pagination slice calculation:', {
-          startIndex,
-          endIndex,
-          totalAvailable: allVideosFromDb.length,
-          videosInSlice: cachedVideos.length,
-          remainingVideos: allVideosFromDb.length - endIndex
-        });
+        if (cachedVideos.length === limit || endIndex <= allVideosFromDb.length) {
+          const formattedVideos = cachedVideos.map(video => ({
+            id: video.youtube_video_id,
+            title: video.title,
+            description: video.description,
+            thumbnail_url: video.thumbnail_url,
+            published_at: video.published_at,
+            view_count: video.view_count,
+            like_count: video.like_count,
+            comment_count: video.comment_count,
+            duration: video.duration,
+            channel_id: video.channel_id,
+            channel_title: video.channel_title,
+          }));
+          const hasMore = endIndex < totalCachedCount || !!storedNextPageToken;
+          const nextOffset = endIndex < totalCachedCount ? endIndex : null;
+          return res.status(200).json({
+            videos: formattedVideos,
+            offset: offset,
+            nextOffset: nextOffset,
+            hasMore: hasMore,
+            totalResults: totalCachedCount,
+            cached: true,
+            youtubePageToken: storedNextPageToken,
+          });
+        }
       } else {
         console.log('YouTube Videos API - Cache is stale, will fetch from YouTube API');
       }
@@ -120,51 +140,6 @@ async function handler(req, res) {
         hasVideos: !!allVideosFromDb,
         videoCount: allVideosFromDb?.length || 0,
         error: allDbError
-      });
-    }
-
-    if (cacheIsFresh) {
-      console.log('YouTube Videos API - returning cached videos:', cachedVideos.length, 'offset:', offset);
-      console.log('YouTube Videos API - totalCachedCount:', totalCachedCount, 'limit:', limit);
-      
-      // Return cached videos with pagination info
-      const formattedVideos = cachedVideos.map(video => ({
-        id: video.youtube_video_id,
-        title: video.title,
-        description: video.description,
-        thumbnail_url: video.thumbnail_url,
-        published_at: video.published_at,
-        view_count: video.view_count,
-        like_count: video.like_count,
-        comment_count: video.comment_count,
-        duration: video.duration,
-        channel_id: video.channel_id,
-        channel_title: video.channel_title,
-      }));
-      
-      const hasMore = offset + limit < totalCachedCount;
-      const nextOffset = hasMore ? offset + limit : null;
-      
-      console.log('YouTube Videos API - pagination calculation:', {
-        offset,
-        limit,
-        totalCachedCount,
-        hasMore,
-        nextOffset,
-        videosReturned: formattedVideos.length
-      });
-      
-      // Log the first few video IDs to verify we're getting different videos per page
-      const videoIds = formattedVideos.slice(0, 3).map(v => v.id);
-      console.log('YouTube Videos API - First 3 video IDs in this page:', videoIds);
-      
-      return res.status(200).json({
-        videos: formattedVideos,
-        offset: offset,
-        nextOffset: nextOffset,
-        hasMore: hasMore,
-        totalResults: totalCachedCount,
-        cached: true,
       });
     }
 
@@ -215,10 +190,10 @@ async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to fetch channel details', message: 'Could not get uploads playlist ID.' });
     }
     const uploadsPlaylistId = channelsData.items[0].contentDetails.relatedPlaylists.uploads;
-    // 2. Fetch up to 50 videos from uploads playlist, using pageToken if provided
+    // 2. Fetch up to 50 videos from uploads playlist, using storedNextPageToken if provided
     let playlistUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${uploadsPlaylistId}&maxResults=50`;
-    if (youtubePageToken) {
-      playlistUrl += `&pageToken=${youtubePageToken}`;
+    if (storedNextPageToken) {
+      playlistUrl += `&pageToken=${storedNextPageToken}`;
     }
     const playlistRes = await fetch(playlistUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -228,6 +203,8 @@ async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to fetch playlist videos', message: 'Could not get videos from uploads playlist.' });
     }
     const nextPageToken = playlistData.nextPageToken || null;
+    // Store or clear the nextPageToken in user_integrations
+    await supabase.from('user_integrations').update({ youtube_next_page_token: nextPageToken }).eq('user_id', userId).eq('provider', 'youtube');
     const videos = playlistData.items.map(item => ({
       user_id: userId,
       youtube_video_id: item.contentDetails.videoId,
