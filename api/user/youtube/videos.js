@@ -39,6 +39,7 @@ async function handler(req, res) {
   try {
     const offset = req.query.offset ? parseInt(req.query.offset) : 0;
     const limit = req.query.limit ? parseInt(req.query.limit) : 15;
+    const youtubePageToken = req.query.youtubePageToken || null;
     console.log('YouTube Videos API - offset:', offset, 'limit:', limit);
 
     // Check if user has YouTube integration
@@ -214,16 +215,19 @@ async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to fetch channel details', message: 'Could not get uploads playlist ID.' });
     }
     const uploadsPlaylistId = channelsData.items[0].contentDetails.relatedPlaylists.uploads;
-
-    // 2. Fetch up to 50 videos from uploads playlist
-    const playlistRes = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${uploadsPlaylistId}&maxResults=50`, {
+    // 2. Fetch up to 50 videos from uploads playlist, using pageToken if provided
+    let playlistUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${uploadsPlaylistId}&maxResults=50`;
+    if (youtubePageToken) {
+      playlistUrl += `&pageToken=${youtubePageToken}`;
+    }
+    const playlistRes = await fetch(playlistUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const playlistData = await playlistRes.json();
     if (!playlistRes.ok || !playlistData.items) {
       return res.status(500).json({ error: 'Failed to fetch playlist videos', message: 'Could not get videos from uploads playlist.' });
     }
-    console.log('YouTube Videos API - fetched from YouTube API:', playlistData.items.length, 'videos');
+    const nextPageToken = playlistData.nextPageToken || null;
     const videos = playlistData.items.map(item => ({
       user_id: userId,
       youtube_video_id: item.contentDetails.videoId,
@@ -235,14 +239,27 @@ async function handler(req, res) {
       channel_title: item.snippet.channelTitle,
       fetched_at: now.toISOString(),
     }));
-
     // 3. Upsert these 50 videos into Supabase
-    const upsertResult = await supabase.from('youtube_videos').upsert(videos, { onConflict: 'user_id,youtube_video_id', ignoreDuplicates: false });
-    console.log('YouTube Videos API - upserted videos, result:', upsertResult);
+    await supabase.from('youtube_videos').upsert(videos, { onConflict: 'user_id,youtube_video_id', ignoreDuplicates: false });
 
-    // 4. Fetch detailed stats for the first 15 videos
-    const videoIds = videos.slice(0, 15).map(v => v.youtube_video_id).join(',');
-    const statsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoIds}`, {
+    // After upserting, re-query the cache for all videos for this user
+    const { data: updatedVideosFromDb, error: updatedDbError } = await supabase
+      .from('youtube_videos')
+      .select('*')
+      .eq('user_id', userId)
+      .order('published_at', { ascending: false });
+
+    if (updatedDbError || !updatedVideosFromDb) {
+      return res.status(500).json({ error: 'Failed to re-query cached videos after upsert.' });
+    }
+
+    const startIndex = offset;
+    const endIndex = offset + limit;
+    const pagedVideos = updatedVideosFromDb.slice(startIndex, endIndex);
+    const pagedVideoIds = pagedVideos.map(v => v.youtube_video_id).join(',');
+
+    // Fetch detailed stats for the paged videos
+    const statsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${pagedVideoIds}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const statsData = await statsRes.json();
@@ -262,15 +279,19 @@ async function handler(req, res) {
       channel_id: item.snippet.channelId,
       channel_title: item.snippet.channelTitle,
     }));
-    console.log('YouTube Videos API - returning', detailedVideos.length, 'detailed videos');
+
+    const totalCached = updatedVideosFromDb.length;
+    const hasMore = endIndex < totalCached || !!nextPageToken;
+    const nextOffset = endIndex < totalCached ? endIndex : null;
 
     return res.status(200).json({
       videos: detailedVideos,
-      offset: 0,
-      nextOffset: null,
-      hasMore: false,
-      totalResults: detailedVideos.length,
-      cached: false,
+      offset: offset,
+      nextOffset: nextOffset,
+      hasMore: hasMore,
+      totalResults: totalCached,
+      cached: true,
+      youtubePageToken: nextPageToken || null,
     });
 
   } catch (error) {
