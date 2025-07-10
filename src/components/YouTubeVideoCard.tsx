@@ -12,6 +12,7 @@ interface YouTubeVideo {
   duration: string;
   channel_id: string;
   channel_title: string;
+  privacyStatus?: string;
 }
 
 interface YouTubeVideoCardProps {
@@ -113,19 +114,16 @@ export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTub
           <span>{formatViewCount(video.view_count || 0)}</span>
           <span>{formatDate(video.published_at || '')}</span>
         </div>
-        {/* Description on hover/click */}
-        <div className="mt-2 text-xs text-gray-400">
-          <button
-            className="underline hover:text-gray-600 focus:outline-none"
-            onMouseEnter={() => setShowDesc(true)}
-            onMouseLeave={() => setShowDesc(false)}
-            onFocus={() => setShowDesc(true)}
-            onBlur={() => setShowDesc(false)}
-            tabIndex={-1}
-            aria-label="Show description"
-          >
-            {showDesc ? (video.description || 'No description available') : 'Show description'}
-          </button>
+        {/* Video status label */}
+        <div className="mt-2 text-xs">
+          <span className={`inline-block px-2 py-1 rounded font-semibold ${
+            video.privacyStatus === 'public' ? 'bg-green-100 text-green-700' :
+            video.privacyStatus === 'private' ? 'bg-gray-200 text-gray-700' :
+            video.privacyStatus === 'unlisted' ? 'bg-yellow-100 text-yellow-700' :
+            'bg-gray-100 text-gray-500'
+          }`}>
+            {video.privacyStatus ? video.privacyStatus.charAt(0).toUpperCase() + video.privacyStatus.slice(1) : 'Public'}
+          </span>
         </div>
       </div>
 

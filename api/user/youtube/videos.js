@@ -106,6 +106,18 @@ async function handler(req, res) {
         const startIndex = offset;
         const endIndex = offset + limit;
         cachedVideos = allVideosFromDb.slice(startIndex, endIndex);
+        // If there are no more videos and no more page token, return empty array and hasMore: false
+        if (startIndex >= allVideosFromDb.length && !storedNextPageToken) {
+          return res.status(200).json({
+            videos: [],
+            offset: offset,
+            nextOffset: null,
+            hasMore: false,
+            totalResults: allVideosFromDb.length,
+            cached: true,
+            youtubePageToken: null,
+          });
+        }
         if (cachedVideos.length === limit || endIndex <= allVideosFromDb.length) {
           const formattedVideos = cachedVideos.map(video => ({
             id: video.youtube_video_id,
@@ -255,6 +267,7 @@ async function handler(req, res) {
       duration: item.contentDetails.duration,
       channel_id: item.snippet.channelId,
       channel_title: item.snippet.channelTitle,
+      privacyStatus: item.status?.privacyStatus || 'public',
     }));
 
     const totalCached = updatedVideosFromDb.length;
