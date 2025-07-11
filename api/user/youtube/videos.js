@@ -106,8 +106,10 @@ async function handler(req, res) {
         const startIndex = offset;
         const endIndex = offset + limit;
         cachedVideos = allVideosFromDb.slice(startIndex, endIndex);
-        // If there are no more videos and no more page token, return empty array and hasMore: false
+        // Debug: log offset, totalCachedCount, nextPageToken at end of list
         if (startIndex >= allVideosFromDb.length && !storedNextPageToken) {
+          console.log('[DEBUG] End of list: offset', offset, 'totalCachedCount', allVideosFromDb.length, 'nextPageToken', storedNextPageToken);
+          console.log('[DEBUG] Returning empty array and hasMore: false');
           return res.status(200).json({
             videos: [],
             offset: offset,
@@ -134,6 +136,9 @@ async function handler(req, res) {
           }));
           const hasMore = endIndex < totalCachedCount || !!storedNextPageToken;
           const nextOffset = endIndex < totalCachedCount ? endIndex : null;
+          console.log('[DEBUG] Returning paginated cached videos:', {
+            offset, endIndex, totalCachedCount, hasMore, nextOffset, videosReturned: formattedVideos.length
+          });
           return res.status(200).json({
             videos: formattedVideos,
             offset: offset,
@@ -248,27 +253,33 @@ async function handler(req, res) {
     const pagedVideoIds = pagedVideos.map(v => v.youtube_video_id).join(',');
 
     // Fetch detailed stats for the paged videos
-    const statsRes = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${pagedVideoIds}`, {
+    const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails,status&id=${pagedVideoIds}`;
+    console.log('[DEBUG] Fetching detailed video stats from:', statsUrl);
+    const statsRes = await fetch(statsUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const statsData = await statsRes.json();
     if (!statsRes.ok || !statsData.items) {
       return res.status(500).json({ error: 'Failed to fetch video details', message: 'Could not get video stats.' });
     }
-    const detailedVideos = statsData.items.map(item => ({
-      id: item.id,
-      title: item.snippet.title,
-      description: item.snippet.description,
-      thumbnail_url: item.snippet.thumbnails?.high?.url || '',
-      published_at: item.snippet.publishedAt,
-      view_count: parseInt(item.statistics.viewCount) || 0,
-      like_count: parseInt(item.statistics.likeCount) || 0,
-      comment_count: parseInt(item.statistics.commentCount) || 0,
-      duration: item.contentDetails.duration,
-      channel_id: item.snippet.channelId,
-      channel_title: item.snippet.channelTitle,
-      privacyStatus: item.status?.privacyStatus || 'public',
-    }));
+    const detailedVideos = statsData.items.map(item => {
+      const privacyStatus = item.status?.privacyStatus || 'public';
+      console.log('[DEBUG] Video', item.id, 'privacyStatus:', privacyStatus);
+      return {
+        id: item.id,
+        title: item.snippet.title,
+        description: item.snippet.description,
+        thumbnail_url: item.snippet.thumbnails?.high?.url || '',
+        published_at: item.snippet.publishedAt,
+        view_count: parseInt(item.statistics.viewCount) || 0,
+        like_count: parseInt(item.statistics.likeCount) || 0,
+        comment_count: parseInt(item.statistics.commentCount) || 0,
+        duration: item.contentDetails.duration,
+        channel_id: item.snippet.channelId,
+        channel_title: item.snippet.channelTitle,
+        privacyStatus,
+      };
+    });
 
     const totalCached = updatedVideosFromDb.length;
     const hasMore = endIndex < totalCached || !!nextPageToken;

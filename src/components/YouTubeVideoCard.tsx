@@ -35,6 +35,9 @@ function formatDuration(isoDuration: string): string {
 export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTubeVideoCardProps) {
   const [showDesc, setShowDesc] = useState(false);
 
+  // Debug: log privacyStatus for each video card
+  console.log('[DEBUG] Rendering video card privacyStatus:', video.privacyStatus);
+
   const formatViewCount = (count: number): string => {
     if (!count || count < 0) return '0 views';
     if (count >= 1000000) {
