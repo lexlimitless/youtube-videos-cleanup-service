@@ -15,7 +15,7 @@ interface YouTubeVideo {
   channel_id: string;
   channel_title: string;
   privacyStatus?: string | null;
-  videoType?: string;
+  videoType?: 'video' | 'short' | 'live' | null;
 }
 
 interface YouTubeVideoGridProps {
@@ -92,10 +92,8 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   // Attach intersection observer to last video element
   useEffect(() => {
     console.log('🔍 [useEffect] filteredVideos.length:', filteredVideos.length, 'loading:', loading, 'hasMore:', hasMore);
-    const hasActiveFilters = searchQuery.trim() || !videoTypeFilters.videos || !videoTypeFilters.shorts || !videoTypeFilters.lives;
-    
-    if (loading || !hasMore || hasActiveFilters) {
-      console.log('🔍 [useEffect] Not attaching observer: loading, no more videos, or filters active');
+    if (loading || !hasMore || searchQuery.trim()) {
+      console.log('🔍 [useEffect] Not attaching observer: loading, no more videos, or search active');
       return;
     }
     const node = lastVideoElement.current;
@@ -106,7 +104,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
     console.log('🔍 [useEffect] Attaching observer to node:', node);
     const observer = new window.IntersectionObserver(entries => {
       console.log('🔍 [IntersectionObserver] entries:', entries, 'loading:', loading, 'hasMore:', hasMore);
-      if (entries[0].isIntersecting && !loading && hasMore && !hasActiveFilters) {
+      if (entries[0].isIntersecting && !loading && hasMore && !searchQuery.trim()) {
         console.log('🔍 [IntersectionObserver] Triggering fetchVideos with offset:', currentOffsetRef.current, 'pageToken:', currentPageTokenRef.current);
         fetchVideos(currentOffsetRef.current, currentPageTokenRef.current);
       }
@@ -116,13 +114,13 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
       console.log('🔍 [useEffect] Detaching observer from node:', node);
       observer.disconnect();
     };
-  }, [filteredVideos.length, loading, hasMore, searchQuery, videoTypeFilters, fetchVideos]);
+  }, [filteredVideos.length, loading, hasMore, searchQuery, fetchVideos]);
 
   // Filter videos based on search query and video type filters
   useEffect(() => {
     let filtered = videos;
 
-    // Filter by search query
+    // Apply search filter
     if (searchQuery.trim()) {
       filtered = filtered.filter(video => 
         video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -130,13 +128,20 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
       );
     }
 
-    // Filter by video type
+    // Apply video type filters
     filtered = filtered.filter(video => {
-      const videoType = video.videoType || 'video';
-      if (videoType === 'video' && !videoTypeFilters.videos) return false;
-      if (videoType === 'short' && !videoTypeFilters.shorts) return false;
-      if (videoType === 'live' && !videoTypeFilters.lives) return false;
-      return true;
+      if (!video.videoType) return true; // Include videos without type info
+      
+      switch (video.videoType) {
+        case 'video':
+          return videoTypeFilters.videos;
+        case 'short':
+          return videoTypeFilters.shorts;
+        case 'live':
+          return videoTypeFilters.lives;
+        default:
+          return true;
+      }
     });
 
     setFilteredVideos(filtered);
@@ -212,8 +217,8 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
 
   return (
     <div className="space-y-4" role="region" aria-label="YouTube video grid">
-      {/* Search Bar and Video Type Filters */}
-      <div className="mb-4 space-y-3">
+      {/* Search Bar */}
+      <div className="mb-4">
         <input
           type="text"
           placeholder="Search videos by title or description..."
@@ -221,35 +226,37 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
-        
-        {/* Video Type Filters */}
-        <div className="flex gap-4 text-sm">
+      </div>
+
+      {/* Video Type Filters */}
+      <div className="mb-4">
+        <div className="flex gap-6">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={videoTypeFilters.videos}
               onChange={(e) => setVideoTypeFilters(prev => ({ ...prev, videos: e.target.checked }))}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
             />
-            <span>Videos</span>
+            <span className="text-sm font-medium text-gray-700">Videos</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={videoTypeFilters.shorts}
               onChange={(e) => setVideoTypeFilters(prev => ({ ...prev, shorts: e.target.checked }))}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
             />
-            <span>Shorts</span>
+            <span className="text-sm font-medium text-gray-700">Shorts</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={videoTypeFilters.lives}
               onChange={(e) => setVideoTypeFilters(prev => ({ ...prev, lives: e.target.checked }))}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
             />
-            <span>Lives</span>
+            <span className="text-sm font-medium text-gray-700">Lives</span>
           </label>
         </div>
       </div>
@@ -258,7 +265,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
         {filteredVideos.map((video, index) => (
           <div
             key={video.id}
-            ref={index === filteredVideos.length - 1 && !searchQuery.trim() && videoTypeFilters.videos && videoTypeFilters.shorts && videoTypeFilters.lives ? lastVideoElement : undefined}
+            ref={index === filteredVideos.length - 1 && !searchQuery.trim() ? lastVideoElement : undefined}
           >
             <YouTubeVideoCard
               video={video}

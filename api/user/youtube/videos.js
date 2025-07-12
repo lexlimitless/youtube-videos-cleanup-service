@@ -139,7 +139,8 @@ async function handler(req, res) {
         duration: video.duration,
         channel_id: video.channel_id,
         channel_title: video.channel_title,
-            privacyStatus: video.privacy_status || undefined,
+        videoType: video.video_type || 'video',
+        privacyStatus: video.privacy_status || undefined,
       }));
           const hasMore = endIndex < totalCachedCount || !!storedNextPageToken;
           const nextOffset = endIndex < totalCachedCount ? endIndex : null;
@@ -227,6 +228,45 @@ async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to fetch playlist videos', message: 'Could not get videos from uploads playlist.' });
     }
     const nextPageToken = playlistData.nextPageToken || null;
+    
+    // Get video IDs to fetch detailed info for video type detection
+    const videoIds = playlistData.items.map(item => item.contentDetails.videoId).join(',');
+    
+    // Fetch detailed video info to determine video types
+    const detailedUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,status&id=${videoIds}`;
+    const detailedRes = await fetch(detailedUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const detailedData = await detailedRes.json();
+    
+    // Create a map of video ID to video type
+    const videoTypeMap = {};
+    if (detailedRes.ok && detailedData.items) {
+      detailedData.items.forEach(item => {
+        const videoId = item.id;
+        let videoType = 'video'; // default
+        
+        // Check if it's a live stream
+        if (item.snippet.liveBroadcastContent && item.snippet.liveBroadcastContent !== 'none') {
+          videoType = 'live';
+        }
+        // Check if it's a short (duration <= 60 seconds)
+        else if (item.contentDetails.duration) {
+          const duration = item.contentDetails.duration;
+          const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+          if (match) {
+            const [, h, m, s] = match.map(x => parseInt(x || '0', 10));
+            const totalSeconds = (h * 3600) + (m * 60) + s;
+            if (totalSeconds <= 60) {
+              videoType = 'short';
+            }
+          }
+        }
+        
+        videoTypeMap[videoId] = videoType;
+      });
+    }
+    
     // Store or clear the nextPageToken in user_integrations
     await supabase.from('user_integrations').update({ youtube_next_page_token: nextPageToken }).eq('user_id', userId).eq('provider', 'youtube');
     const videos = playlistData.items.map(item => ({
@@ -238,6 +278,7 @@ async function handler(req, res) {
       published_at: item.contentDetails.videoPublishedAt,
       channel_id: item.snippet.channelId,
       channel_title: item.snippet.channelTitle,
+      video_type: videoTypeMap[item.contentDetails.videoId] || 'video',
       fetched_at: now.toISOString(),
       // Detailed stats (view_count, like_count, comment_count, duration, privacy_status) 
       // will be fetched on-demand when user selects a video
@@ -260,22 +301,6 @@ async function handler(req, res) {
     const endIndex = offset + limit;
     const pagedVideos = updatedVideosFromDb.slice(startIndex, endIndex);
     
-    // Helper function to determine video type based on duration
-    const getVideoType = (duration) => {
-      if (!duration) return 'video'; // Default to video if no duration
-      
-      // Parse ISO 8601 duration (PT1M30S format)
-      const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-      if (!match) return 'video';
-      
-      const [, h, m, s] = match.map(x => parseInt(x || '0', 10));
-      const totalSeconds = (h * 3600) + (m * 60) + s;
-      
-      // YouTube Shorts are typically 60 seconds or less
-      if (totalSeconds <= 60) return 'short';
-      return 'video';
-    };
-
     // Return basic video information from playlist API
     // Detailed stats will be fetched on-demand when user selects a video
     const basicVideos = pagedVideos.map(video => ({
@@ -286,14 +311,13 @@ async function handler(req, res) {
       published_at: video.published_at,
       channel_id: video.channel_id,
       channel_title: video.channel_title,
+      videoType: video.video_type || 'video',
       // These fields will be null/undefined initially and populated when video is selected
       view_count: video.view_count || null,
       like_count: video.like_count || null,
       comment_count: video.comment_count || null,
       duration: video.duration || null,
       privacyStatus: video.privacy_status || null,
-      // Add video type based on duration
-      videoType: getVideoType(video.duration),
     }));
 
     const totalCached = updatedVideosFromDb.length;
@@ -426,26 +450,6 @@ async function handleVideoDetails(req, res, userId) {
     }
 
     const videoData = statsData.items[0];
-    
-    // Helper function to determine video type
-    const getVideoType = (duration, status) => {
-      // Check if it's a live stream
-      if (status?.liveBroadcastContent === 'live') return 'live';
-      
-      if (!duration) return 'video'; // Default to video if no duration
-      
-      // Parse ISO 8601 duration (PT1M30S format)
-      const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-      if (!match) return 'video';
-      
-      const [, h, m, s] = match.map(x => parseInt(x || '0', 10));
-      const totalSeconds = (h * 3600) + (m * 60) + s;
-      
-      // YouTube Shorts are typically 60 seconds or less
-      if (totalSeconds <= 60) return 'short';
-      return 'video';
-    };
-
     const detailedVideo = {
       id: videoData.id,
       title: videoData.snippet.title,
@@ -459,7 +463,6 @@ async function handleVideoDetails(req, res, userId) {
       channel_id: videoData.snippet.channelId,
       channel_title: videoData.snippet.channelTitle,
       privacyStatus: videoData.status?.privacyStatus || 'public',
-      videoType: getVideoType(videoData.contentDetails.duration, videoData.snippet),
     };
 
     // Update the database with detailed information
