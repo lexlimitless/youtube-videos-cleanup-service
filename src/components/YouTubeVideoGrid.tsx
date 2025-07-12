@@ -15,6 +15,7 @@ interface YouTubeVideo {
   channel_id: string;
   channel_title: string;
   privacyStatus?: string | null;
+  videoType?: string;
 }
 
 interface YouTubeVideoGridProps {
@@ -31,6 +32,11 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   const [offset, setOffset] = useState<number>(0);
   const [youtubePageToken, setYoutubePageToken] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [videoTypeFilters, setVideoTypeFilters] = useState({
+    videos: true,
+    shorts: true,
+    lives: true,
+  });
   const { getToken } = useAuth();
   const lastVideoElement = useRef<HTMLDivElement | null>(null);
   const currentOffsetRef = useRef<number>(0);
@@ -86,8 +92,10 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   // Attach intersection observer to last video element
   useEffect(() => {
     console.log('🔍 [useEffect] filteredVideos.length:', filteredVideos.length, 'loading:', loading, 'hasMore:', hasMore);
-    if (loading || !hasMore || searchQuery.trim()) {
-      console.log('🔍 [useEffect] Not attaching observer: loading, no more videos, or search active');
+    const hasActiveFilters = searchQuery.trim() || !videoTypeFilters.videos || !videoTypeFilters.shorts || !videoTypeFilters.lives;
+    
+    if (loading || !hasMore || hasActiveFilters) {
+      console.log('🔍 [useEffect] Not attaching observer: loading, no more videos, or filters active');
       return;
     }
     const node = lastVideoElement.current;
@@ -98,7 +106,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
     console.log('🔍 [useEffect] Attaching observer to node:', node);
     const observer = new window.IntersectionObserver(entries => {
       console.log('🔍 [IntersectionObserver] entries:', entries, 'loading:', loading, 'hasMore:', hasMore);
-      if (entries[0].isIntersecting && !loading && hasMore && !searchQuery.trim()) {
+      if (entries[0].isIntersecting && !loading && hasMore && !hasActiveFilters) {
         console.log('🔍 [IntersectionObserver] Triggering fetchVideos with offset:', currentOffsetRef.current, 'pageToken:', currentPageTokenRef.current);
         fetchVideos(currentOffsetRef.current, currentPageTokenRef.current);
       }
@@ -108,20 +116,31 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
       console.log('🔍 [useEffect] Detaching observer from node:', node);
       observer.disconnect();
     };
-  }, [filteredVideos.length, loading, hasMore, searchQuery, fetchVideos]);
+  }, [filteredVideos.length, loading, hasMore, searchQuery, videoTypeFilters, fetchVideos]);
 
-  // Filter videos based on search query
+  // Filter videos based on search query and video type filters
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredVideos(videos);
-    } else {
-      const filtered = videos.filter(video => 
+    let filtered = videos;
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      filtered = filtered.filter(video => 
         video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         video.description.toLowerCase().includes(searchQuery.toLowerCase())
       );
-      setFilteredVideos(filtered);
     }
-  }, [videos, searchQuery]);
+
+    // Filter by video type
+    filtered = filtered.filter(video => {
+      const videoType = video.videoType || 'video';
+      if (videoType === 'video' && !videoTypeFilters.videos) return false;
+      if (videoType === 'short' && !videoTypeFilters.shorts) return false;
+      if (videoType === 'live' && !videoTypeFilters.lives) return false;
+      return true;
+    });
+
+    setFilteredVideos(filtered);
+  }, [videos, searchQuery, videoTypeFilters]);
 
   useEffect(() => {
     fetchVideos(0, null);
@@ -193,8 +212,8 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
 
   return (
     <div className="space-y-4" role="region" aria-label="YouTube video grid">
-      {/* Search Bar */}
-      <div className="mb-4">
+      {/* Search Bar and Video Type Filters */}
+      <div className="mb-4 space-y-3">
         <input
           type="text"
           placeholder="Search videos by title or description..."
@@ -202,13 +221,44 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
+        
+        {/* Video Type Filters */}
+        <div className="flex gap-4 text-sm">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={videoTypeFilters.videos}
+              onChange={(e) => setVideoTypeFilters(prev => ({ ...prev, videos: e.target.checked }))}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>Videos</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={videoTypeFilters.shorts}
+              onChange={(e) => setVideoTypeFilters(prev => ({ ...prev, shorts: e.target.checked }))}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>Shorts</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={videoTypeFilters.lives}
+              onChange={(e) => setVideoTypeFilters(prev => ({ ...prev, lives: e.target.checked }))}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>Lives</span>
+          </label>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         {filteredVideos.map((video, index) => (
           <div
             key={video.id}
-            ref={index === filteredVideos.length - 1 && !searchQuery.trim() ? lastVideoElement : undefined}
+            ref={index === filteredVideos.length - 1 && !searchQuery.trim() && videoTypeFilters.videos && videoTypeFilters.shorts && videoTypeFilters.lives ? lastVideoElement : undefined}
           >
             <YouTubeVideoCard
               video={video}

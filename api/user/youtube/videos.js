@@ -260,6 +260,22 @@ async function handler(req, res) {
     const endIndex = offset + limit;
     const pagedVideos = updatedVideosFromDb.slice(startIndex, endIndex);
     
+    // Helper function to determine video type based on duration
+    const getVideoType = (duration) => {
+      if (!duration) return 'video'; // Default to video if no duration
+      
+      // Parse ISO 8601 duration (PT1M30S format)
+      const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+      if (!match) return 'video';
+      
+      const [, h, m, s] = match.map(x => parseInt(x || '0', 10));
+      const totalSeconds = (h * 3600) + (m * 60) + s;
+      
+      // YouTube Shorts are typically 60 seconds or less
+      if (totalSeconds <= 60) return 'short';
+      return 'video';
+    };
+
     // Return basic video information from playlist API
     // Detailed stats will be fetched on-demand when user selects a video
     const basicVideos = pagedVideos.map(video => ({
@@ -276,6 +292,8 @@ async function handler(req, res) {
       comment_count: video.comment_count || null,
       duration: video.duration || null,
       privacyStatus: video.privacy_status || null,
+      // Add video type based on duration
+      videoType: getVideoType(video.duration),
     }));
 
     const totalCached = updatedVideosFromDb.length;
@@ -408,6 +426,26 @@ async function handleVideoDetails(req, res, userId) {
     }
 
     const videoData = statsData.items[0];
+    
+    // Helper function to determine video type
+    const getVideoType = (duration, status) => {
+      // Check if it's a live stream
+      if (status?.liveBroadcastContent === 'live') return 'live';
+      
+      if (!duration) return 'video'; // Default to video if no duration
+      
+      // Parse ISO 8601 duration (PT1M30S format)
+      const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+      if (!match) return 'video';
+      
+      const [, h, m, s] = match.map(x => parseInt(x || '0', 10));
+      const totalSeconds = (h * 3600) + (m * 60) + s;
+      
+      // YouTube Shorts are typically 60 seconds or less
+      if (totalSeconds <= 60) return 'short';
+      return 'video';
+    };
+
     const detailedVideo = {
       id: videoData.id,
       title: videoData.snippet.title,
@@ -421,6 +459,7 @@ async function handleVideoDetails(req, res, userId) {
       channel_id: videoData.snippet.channelId,
       channel_title: videoData.snippet.channelTitle,
       privacyStatus: videoData.status?.privacyStatus || 'public',
+      videoType: getVideoType(videoData.contentDetails.duration, videoData.snippet),
     };
 
     // Update the database with detailed information
