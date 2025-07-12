@@ -15,7 +15,6 @@ interface YouTubeVideo {
   channel_id: string;
   channel_title: string;
   privacyStatus?: string | null;
-  videoType?: 'video' | 'short' | 'live' | null;
 }
 
 interface YouTubeVideoGridProps {
@@ -32,11 +31,6 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
   const [offset, setOffset] = useState<number>(0);
   const [youtubePageToken, setYoutubePageToken] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [videoTypeFilters, setVideoTypeFilters] = useState({
-    videos: true,
-    shorts: true,
-    lives: true,
-  });
   const { getToken } = useAuth();
   const lastVideoElement = useRef<HTMLDivElement | null>(null);
   const currentOffsetRef = useRef<number>(0);
@@ -116,36 +110,18 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
     };
   }, [filteredVideos.length, loading, hasMore, searchQuery, fetchVideos]);
 
-  // Filter videos based on search query and video type filters
+  // Filter videos based on search query
   useEffect(() => {
-    let filtered = videos;
-
-    // Apply search filter
-    if (searchQuery.trim()) {
-      filtered = filtered.filter(video => 
+    if (!searchQuery.trim()) {
+      setFilteredVideos(videos);
+    } else {
+      const filtered = videos.filter(video => 
         video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         video.description.toLowerCase().includes(searchQuery.toLowerCase())
       );
+      setFilteredVideos(filtered);
     }
-
-    // Apply video type filters
-    filtered = filtered.filter(video => {
-      if (!video.videoType) return true; // Include videos without type info
-      
-      switch (video.videoType) {
-        case 'video':
-          return videoTypeFilters.videos;
-        case 'short':
-          return videoTypeFilters.shorts;
-        case 'live':
-          return videoTypeFilters.lives;
-        default:
-          return true;
-      }
-    });
-
-    setFilteredVideos(filtered);
-  }, [videos, searchQuery, videoTypeFilters]);
+  }, [videos, searchQuery]);
 
   useEffect(() => {
     fetchVideos(0, null);
@@ -226,39 +202,6 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
           onChange={(e) => setSearchQuery(e.target.value)}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
-      </div>
-
-      {/* Video Type Filters */}
-      <div className="mb-4">
-        <div className="flex gap-6">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={videoTypeFilters.videos}
-              onChange={(e) => setVideoTypeFilters(prev => ({ ...prev, videos: e.target.checked }))}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <span className="text-sm font-medium text-gray-700">Videos</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={videoTypeFilters.shorts}
-              onChange={(e) => setVideoTypeFilters(prev => ({ ...prev, shorts: e.target.checked }))}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <span className="text-sm font-medium text-gray-700">Shorts</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={videoTypeFilters.lives}
-              onChange={(e) => setVideoTypeFilters(prev => ({ ...prev, lives: e.target.checked }))}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-            />
-            <span className="text-sm font-medium text-gray-700">Lives</span>
-          </label>
-        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">

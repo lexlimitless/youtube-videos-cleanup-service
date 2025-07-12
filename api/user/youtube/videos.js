@@ -139,8 +139,7 @@ async function handler(req, res) {
         duration: video.duration,
         channel_id: video.channel_id,
         channel_title: video.channel_title,
-        videoType: video.video_type || 'video',
-        privacyStatus: video.privacy_status || undefined,
+            privacyStatus: video.privacy_status || undefined,
       }));
           const hasMore = endIndex < totalCachedCount || !!storedNextPageToken;
           const nextOffset = endIndex < totalCachedCount ? endIndex : null;
@@ -228,47 +227,18 @@ async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to fetch playlist videos', message: 'Could not get videos from uploads playlist.' });
     }
     const nextPageToken = playlistData.nextPageToken || null;
-    
-    // Get video IDs to fetch detailed info for video type detection
-    const videoIds = playlistData.items.map(item => item.contentDetails.videoId).join(',');
-    
-    // Fetch detailed video info to determine video types
-    const detailedUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,status&id=${videoIds}`;
-    const detailedRes = await fetch(detailedUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    const detailedData = await detailedRes.json();
-    
-    // Create a map of video ID to video type
-    const videoTypeMap = {};
-    if (detailedRes.ok && detailedData.items) {
-      detailedData.items.forEach(item => {
-        const videoId = item.id;
-        let videoType = 'video'; // default
-        
-        // Check if it's a live stream
-        if (item.snippet.liveBroadcastContent && item.snippet.liveBroadcastContent !== 'none') {
-          videoType = 'live';
-        }
-        // Check if it's a short (duration <= 60 seconds)
-        else if (item.contentDetails.duration) {
-          const duration = item.contentDetails.duration;
-          const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-          if (match) {
-            const [, h, m, s] = match.map(x => parseInt(x || '0', 10));
-            const totalSeconds = (h * 3600) + (m * 60) + s;
-            if (totalSeconds <= 60) {
-              videoType = 'short';
-            }
-          }
-        }
-        
-        videoTypeMap[videoId] = videoType;
-      });
-    }
-    
     // Store or clear the nextPageToken in user_integrations
     await supabase.from('user_integrations').update({ youtube_next_page_token: nextPageToken }).eq('user_id', userId).eq('provider', 'youtube');
+    // Debug: Log all available fields from playlist API
+    console.log('🔍 [DEBUG] First video from playlist API - Full item structure:');
+    if (playlistData.items && playlistData.items.length > 0) {
+      const firstItem = playlistData.items[0];
+      console.log('🔍 [DEBUG] contentDetails:', JSON.stringify(firstItem.contentDetails, null, 2));
+      console.log('🔍 [DEBUG] snippet:', JSON.stringify(firstItem.snippet, null, 2));
+      console.log('🔍 [DEBUG] status:', JSON.stringify(firstItem.status, null, 2));
+      console.log('🔍 [DEBUG] statistics:', JSON.stringify(firstItem.statistics, null, 2));
+    }
+
     const videos = playlistData.items.map(item => ({
       user_id: userId,
       youtube_video_id: item.contentDetails.videoId,
@@ -278,7 +248,6 @@ async function handler(req, res) {
       published_at: item.contentDetails.videoPublishedAt,
       channel_id: item.snippet.channelId,
       channel_title: item.snippet.channelTitle,
-      video_type: videoTypeMap[item.contentDetails.videoId] || 'video',
       fetched_at: now.toISOString(),
       // Detailed stats (view_count, like_count, comment_count, duration, privacy_status) 
       // will be fetched on-demand when user selects a video
@@ -301,6 +270,27 @@ async function handler(req, res) {
     const endIndex = offset + limit;
     const pagedVideos = updatedVideosFromDb.slice(startIndex, endIndex);
     
+    // Debug: Log what we're storing and returning
+    console.log('🔍 [DEBUG] Sample video data being stored/returned:');
+    if (pagedVideos.length > 0) {
+      const sampleVideo = pagedVideos[0];
+      console.log('🔍 [DEBUG] Database record:', {
+        youtube_video_id: sampleVideo.youtube_video_id,
+        title: sampleVideo.title,
+        description: sampleVideo.description?.substring(0, 100) + '...',
+        thumbnail_url: sampleVideo.thumbnail_url,
+        published_at: sampleVideo.published_at,
+        channel_id: sampleVideo.channel_id,
+        channel_title: sampleVideo.channel_title,
+        view_count: sampleVideo.view_count,
+        like_count: sampleVideo.like_count,
+        comment_count: sampleVideo.comment_count,
+        duration: sampleVideo.duration,
+        privacy_status: sampleVideo.privacy_status,
+        fetched_at: sampleVideo.fetched_at
+      });
+    }
+
     // Return basic video information from playlist API
     // Detailed stats will be fetched on-demand when user selects a video
     const basicVideos = pagedVideos.map(video => ({
@@ -311,7 +301,6 @@ async function handler(req, res) {
       published_at: video.published_at,
       channel_id: video.channel_id,
       channel_title: video.channel_title,
-      videoType: video.video_type || 'video',
       // These fields will be null/undefined initially and populated when video is selected
       view_count: video.view_count || null,
       like_count: video.like_count || null,
@@ -450,6 +439,14 @@ async function handleVideoDetails(req, res, userId) {
     }
 
     const videoData = statsData.items[0];
+    
+    // Debug: Log all available fields from detailed video API
+    console.log('🔍 [DEBUG] Detailed video API response - Full structure:');
+    console.log('🔍 [DEBUG] snippet:', JSON.stringify(videoData.snippet, null, 2));
+    console.log('🔍 [DEBUG] statistics:', JSON.stringify(videoData.statistics, null, 2));
+    console.log('🔍 [DEBUG] contentDetails:', JSON.stringify(videoData.contentDetails, null, 2));
+    console.log('🔍 [DEBUG] status:', JSON.stringify(videoData.status, null, 2));
+    
     const detailedVideo = {
       id: videoData.id,
       title: videoData.snippet.title,
