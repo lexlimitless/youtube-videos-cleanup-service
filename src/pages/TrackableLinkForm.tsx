@@ -11,12 +11,13 @@ interface YouTubeVideo {
   description: string;
   thumbnail_url: string;
   published_at: string;
-  view_count: number;
-  like_count: number;
-  comment_count: number;
-  duration: string;
+  view_count: number | null;
+  like_count: number | null;
+  comment_count: number | null;
+  duration: string | null;
   channel_id: string;
   channel_title: string;
+  privacyStatus?: string | null;
 }
 
 const platforms = ['YouTube', 'Instagram'];
@@ -36,6 +37,7 @@ export default function TrackableLinkForm() {
     platform: '',
     url: '',
     attribution_window_days: 7,
+    video_type: '',
   });
 
   // YouTube video selection state
@@ -71,6 +73,7 @@ export default function TrackableLinkForm() {
         platform: link.platform || '',
         url: link.destination_url || '',
         attribution_window_days: link.attribution_window_days || 7,
+        video_type: link.video_type || '',
       });
 
       // Load YouTube video data if exists
@@ -123,6 +126,23 @@ export default function TrackableLinkForm() {
       const token = await getToken();
       if (!token) throw new Error("No auth token");
 
+      // If YouTube video is selected, fetch detailed information first
+      if (form.platform === 'YouTube' && selectedYouTubeVideo?.id) {
+        try {
+          const videoDetailsResponse = await fetch(`/api/user/youtube/videos?videoId=${selectedYouTubeVideo.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+          
+          if (videoDetailsResponse.ok) {
+            console.log('Video details fetched and stored successfully');
+          } else {
+            console.warn('Failed to fetch video details, but continuing with link creation');
+          }
+        } catch (error) {
+          console.warn('Error fetching video details:', error);
+        }
+      }
+
       if (id) {
         // Update existing link
         const response = await fetch(`/api/user/links?id=${id}`, {
@@ -133,6 +153,7 @@ export default function TrackableLinkForm() {
             title: form.title,
             platform: form.platform,
             attribution_window_days: form.attribution_window_days,
+            video_type: form.video_type,
             youtube_video_id: selectedYouTubeVideo?.id || null,
           }),
         });
@@ -148,6 +169,7 @@ export default function TrackableLinkForm() {
             title: form.title || `Untitled Link`,
             platform: form.platform,
             attribution_window_days: form.attribution_window_days,
+            video_type: form.video_type,
             youtube_video_id: selectedYouTubeVideo?.id || null,
           }),
         });
@@ -187,6 +209,24 @@ export default function TrackableLinkForm() {
         <h1 className="text-2xl font-bold text-gray-900">
           {id ? 'Edit Trackable Link' : 'Create New Trackable Link'}
         </h1>
+      </div>
+
+      {/* Action Buttons - Moved to top */}
+      <div className="flex gap-4 mb-6">
+        <button
+          type="button"
+          onClick={() => navigate('/links')}
+          className="bg-gray-200 text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-300 transition-colors font-semibold"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={saving}
+          className="bg-emerald-600 text-white py-3 px-6 rounded-lg hover:bg-emerald-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {saving ? 'Saving...' : (id ? 'Save Changes' : 'Create Link')}
+        </button>
       </div>
 
       {/* Form */}
@@ -255,6 +295,31 @@ export default function TrackableLinkForm() {
             </select>
           </div>
 
+          {/* Video Type Selector */}
+          {form.platform === 'YouTube' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Video Type
+              </label>
+              <select
+                name="video_type"
+                value={form.video_type}
+                onChange={handleFormChange}
+                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              >
+                <option value="">Select video type</option>
+                <option value="tutorial">Tutorial</option>
+                <option value="review">Review</option>
+                <option value="vlog">Vlog</option>
+                <option value="gaming">Gaming</option>
+                <option value="music">Music</option>
+                <option value="educational">Educational</option>
+                <option value="entertainment">Entertainment</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          )}
+
           {/* YouTube Video Selection */}
           {form.platform === 'YouTube' && (
             <div>
@@ -269,24 +334,6 @@ export default function TrackableLinkForm() {
               </div>
             </div>
           )}
-
-          {/* Action Buttons */}
-          <div className="flex gap-4 pt-6 border-t border-gray-200">
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 bg-emerald-600 text-white py-3 px-6 rounded-lg hover:bg-emerald-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {saving ? 'Saving...' : (id ? 'Save Changes' : 'Create Link')}
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/links')}
-              className="flex-1 bg-gray-200 text-gray-700 py-3 px-6 rounded-lg hover:bg-gray-300 transition-colors font-semibold"
-            >
-              Cancel
-            </button>
-          </div>
         </form>
       </div>
     </div>

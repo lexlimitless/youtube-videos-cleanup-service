@@ -24,11 +24,13 @@ interface YouTubeVideoGridProps {
 
 export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTubeVideoGridProps) {
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
+  const [filteredVideos, setFilteredVideos] = useState<YouTubeVideo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState<number>(0);
   const [youtubePageToken, setYoutubePageToken] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const { getToken } = useAuth();
   const lastVideoElement = useRef<HTMLDivElement | null>(null);
   const currentOffsetRef = useRef<number>(0);
@@ -83,9 +85,9 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
 
   // Attach intersection observer to last video element
   useEffect(() => {
-    console.log('🔍 [useEffect] videos.length:', videos.length, 'loading:', loading, 'hasMore:', hasMore);
-    if (loading || !hasMore) {
-      console.log('🔍 [useEffect] Not attaching observer: loading or no more videos');
+    console.log('🔍 [useEffect] filteredVideos.length:', filteredVideos.length, 'loading:', loading, 'hasMore:', hasMore);
+    if (loading || !hasMore || searchQuery.trim()) {
+      console.log('🔍 [useEffect] Not attaching observer: loading, no more videos, or search active');
       return;
     }
     const node = lastVideoElement.current;
@@ -96,7 +98,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
     console.log('🔍 [useEffect] Attaching observer to node:', node);
     const observer = new window.IntersectionObserver(entries => {
       console.log('🔍 [IntersectionObserver] entries:', entries, 'loading:', loading, 'hasMore:', hasMore);
-      if (entries[0].isIntersecting && !loading && hasMore) {
+      if (entries[0].isIntersecting && !loading && hasMore && !searchQuery.trim()) {
         console.log('🔍 [IntersectionObserver] Triggering fetchVideos with offset:', currentOffsetRef.current, 'pageToken:', currentPageTokenRef.current);
         fetchVideos(currentOffsetRef.current, currentPageTokenRef.current);
       }
@@ -106,51 +108,29 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
       console.log('🔍 [useEffect] Detaching observer from node:', node);
       observer.disconnect();
     };
-  }, [videos.length, loading, hasMore, fetchVideos]);
+  }, [filteredVideos.length, loading, hasMore, searchQuery, fetchVideos]);
+
+  // Filter videos based on search query
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredVideos(videos);
+    } else {
+      const filtered = videos.filter(video => 
+        video.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        video.description.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredVideos(filtered);
+    }
+  }, [videos, searchQuery]);
 
   useEffect(() => {
     fetchVideos(0, null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleVideoSelect = async (video: YouTubeVideo) => {
+  const handleVideoSelect = (video: YouTubeVideo) => {
     if (selectedVideo?.id === video.id) {
       onVideoSelect(null); // Deselect if same video
-      return;
-    }
-
-    // Check if video has detailed information
-    const hasDetailedInfo = video.view_count !== null && 
-                           video.like_count !== null && 
-                           video.comment_count !== null && 
-                           video.duration !== null && 
-                           video.privacyStatus !== null;
-
-    if (!hasDetailedInfo) {
-      // Fetch detailed information
-      try {
-        const token = await getToken();
-        const response = await fetch(`/api/user/youtube/videos?videoId=${video.id}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-        
-        if (response.ok) {
-          const detailedVideo = await response.json();
-          // Update the video in the local state with detailed information
-          setVideos(prev => prev.map(v => 
-            v.id === video.id ? detailedVideo : v
-          ));
-          onVideoSelect(detailedVideo);
-        } else {
-          console.error('Failed to fetch video details');
-          onVideoSelect(video); // Still select the video even if details fail
-        }
-      } catch (error) {
-        console.error('Error fetching video details:', error);
-        onVideoSelect(video); // Still select the video even if details fail
-      }
     } else {
       onVideoSelect(video);
     }
@@ -213,11 +193,22 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
 
   return (
     <div className="space-y-4" role="region" aria-label="YouTube video grid">
+      {/* Search Bar */}
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="Search videos by title or description..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        {videos.map((video, index) => (
+        {filteredVideos.map((video, index) => (
           <div
             key={video.id}
-            ref={index === videos.length - 1 ? lastVideoElement : undefined}
+            ref={index === filteredVideos.length - 1 && !searchQuery.trim() ? lastVideoElement : undefined}
           >
             <YouTubeVideoCard
               video={video}

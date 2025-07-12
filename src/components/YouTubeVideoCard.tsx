@@ -30,52 +30,7 @@ export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTub
   // Debug: log privacyStatus for each video card
   console.log('[DEBUG] Rendering video card privacyStatus:', video.privacyStatus);
 
-  const formatViewCount = (count: number | null): string => {
-    if (count === null || count === undefined) return 'Loading...';
-    if (count < 0) return '0 views';
-    if (count >= 1000000) {
-      return `${(count / 1000000).toFixed(1)}M views`;
-    } else if (count >= 1000) {
-      return `${(count / 1000).toFixed(1)}K views`;
-    }
-    return `${count} views`;
-  };
 
-  const formatDate = (dateString: string): string => {
-    if (!dateString) return 'Unknown date';
-    
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return 'Invalid date';
-    
-    const now = new Date();
-    const diffInDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffInDays === 0) {
-      return 'Today';
-    } else if (diffInDays === 1) {
-      return 'Yesterday';
-    } else if (diffInDays < 7) {
-      return `${diffInDays} days ago`;
-    } else if (diffInDays < 30) {
-      const weeks = Math.floor(diffInDays / 7);
-      return `${weeks} week${weeks > 1 ? 's' : ''} ago`;
-    } else if (diffInDays < 365) {
-      const months = Math.floor(diffInDays / 30);
-      return `${months} month${months > 1 ? 's' : ''} ago`;
-    } else {
-      const years = Math.floor(diffInDays / 365);
-      return `${years} year${years > 1 ? 's' : ''} ago`;
-    }
-  };
-
-  const formatDuration = (isoDuration: string | null): string => {
-    if (!isoDuration) return '';
-    
-    const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-    if (!match) return '';
-    const [, h, m, s] = match.map(x => parseInt(x || '0', 10));
-    if (h) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    return `${m}:${String(s).padStart(2, '0')}`;
-  };
 
   return (
     <div 
@@ -106,33 +61,14 @@ export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTub
           alt={video.title || 'Video thumbnail'}
           className="w-full h-full object-cover"
         />
-        <div className="absolute bottom-1 right-1 bg-black bg-opacity-75 text-white text-xs px-1 py-0.5 rounded">
-          {video.duration ? formatDuration(video.duration) : ''}
-        </div>
+
       </div>
 
       {/* Video info */}
       <div className="p-3">
-        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 mb-2 leading-tight" title={video.title || ''}>
+        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 leading-tight" title={video.title || ''}>
           {video.title || 'Untitled Video'}
         </h3>
-        <div className="flex flex-col text-xs text-gray-500 mt-2">
-          <span>{formatViewCount(video.view_count)}</span>
-          <span>{formatDate(video.published_at || '')}</span>
-        </div>
-        {/* Video status label - only show if we have privacy status */}
-        {video.privacyStatus && (
-          <div className="mt-2 text-xs">
-            <span className={`inline-block px-2 py-1 rounded font-semibold ${
-              video.privacyStatus === 'public' ? 'bg-green-100 text-green-700' :
-              video.privacyStatus === 'private' ? 'bg-gray-200 text-gray-700' :
-              video.privacyStatus === 'unlisted' ? 'bg-yellow-100 text-yellow-700' :
-              'bg-gray-100 text-gray-500'
-            }`}>
-              {video.privacyStatus.charAt(0).toUpperCase() + video.privacyStatus.slice(1)}
-            </span>
-          </div>
-        )}
       </div>
 
       {/* Hover overlay */}
