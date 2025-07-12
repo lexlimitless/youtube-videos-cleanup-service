@@ -57,8 +57,7 @@ async function handler(req, res) {
       .eq('is_connected', true)
       .single();
 
-    console.log('YouTube Videos API - integration:', integration);
-    console.log('YouTube Videos API - integrationError:', integrationError);
+
 
     if (integrationError || !integration) {
       return res.status(400).json({ 
