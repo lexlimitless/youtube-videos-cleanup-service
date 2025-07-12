@@ -133,6 +133,7 @@ async function handler(req, res) {
             duration: video.duration,
             channel_id: video.channel_id,
             channel_title: video.channel_title,
+            privacyStatus: video.privacy_status || undefined,
           }));
           const hasMore = endIndex < totalCachedCount || !!storedNextPageToken;
           const nextOffset = endIndex < totalCachedCount ? endIndex : null;
@@ -232,6 +233,7 @@ async function handler(req, res) {
       channel_id: item.snippet.channelId,
       channel_title: item.snippet.channelTitle,
       fetched_at: now.toISOString(),
+      // privacy_status will be updated after fetching details
     }));
     // 3. Upsert these 50 videos into Supabase
     await supabase.from('youtube_videos').upsert(videos, { onConflict: 'user_id,youtube_video_id', ignoreDuplicates: false });
@@ -262,8 +264,17 @@ async function handler(req, res) {
     if (!statsRes.ok || !statsData.items) {
       return res.status(500).json({ error: 'Failed to fetch video details', message: 'Could not get video stats.' });
     }
+    // Map videoId to privacyStatus for upsert
+    const privacyStatusMap = {};
+    statsData.items.forEach(item => {
+      privacyStatusMap[item.id] = item.status?.privacyStatus || undefined;
+    });
+    // Upsert privacy_status for each video
+    for (const item of statsData.items) {
+      await supabase.from('youtube_videos').update({ privacy_status: item.status?.privacyStatus || null }).eq('user_id', userId).eq('youtube_video_id', item.id);
+    }
     const detailedVideos = statsData.items.map(item => {
-      const privacyStatus = item.status?.privacyStatus || 'public';
+      const privacyStatus = item.status?.privacyStatus || undefined;
       console.log('[DEBUG] Video', item.id, 'privacyStatus:', privacyStatus);
       return {
         id: item.id,
