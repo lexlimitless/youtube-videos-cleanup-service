@@ -130,7 +130,7 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
       // Fetch detailed information
       try {
         const token = await getToken();
-        const response = await fetch(`/api/user/youtube/video-details?videoId=${video.id}`, {
+        const response = await fetch(`/api/user/youtube/videos?videoId=${video.id}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
