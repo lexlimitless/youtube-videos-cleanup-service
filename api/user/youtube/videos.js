@@ -229,14 +229,18 @@ async function handler(req, res) {
     const nextPageToken = playlistData.nextPageToken || null;
     // Store or clear the nextPageToken in user_integrations
     await supabase.from('user_integrations').update({ youtube_next_page_token: nextPageToken }).eq('user_id', userId).eq('provider', 'youtube');
-    // Debug: Log all available fields from playlist API
-    console.log('🔍 [DEBUG] First video from playlist API - Full item structure:');
+    // Debug: Log all available fields from playlist API for first 5 videos
+    console.log('🔍 [DEBUG] First 5 videos from playlist API - Full item structure:');
     if (playlistData.items && playlistData.items.length > 0) {
-      const firstItem = playlistData.items[0];
-      console.log('🔍 [DEBUG] contentDetails:', JSON.stringify(firstItem.contentDetails, null, 2));
-      console.log('🔍 [DEBUG] snippet:', JSON.stringify(firstItem.snippet, null, 2));
-      console.log('🔍 [DEBUG] status:', JSON.stringify(firstItem.status, null, 2));
-      console.log('🔍 [DEBUG] statistics:', JSON.stringify(firstItem.statistics, null, 2));
+      const videosToLog = playlistData.items.slice(0, 5);
+      videosToLog.forEach((item, index) => {
+        console.log(`🔍 [DEBUG] Video ${index + 1}:`);
+        console.log('🔍 [DEBUG] contentDetails:', JSON.stringify(item.contentDetails, null, 2));
+        console.log('🔍 [DEBUG] snippet:', JSON.stringify(item.snippet, null, 2));
+        console.log('🔍 [DEBUG] status:', JSON.stringify(item.status, null, 2));
+        console.log('🔍 [DEBUG] statistics:', JSON.stringify(item.statistics, null, 2));
+        console.log('---');
+      });
     }
 
     const videos = playlistData.items.map(item => ({
