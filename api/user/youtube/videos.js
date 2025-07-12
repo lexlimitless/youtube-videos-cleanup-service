@@ -135,10 +135,23 @@ async function handler(req, res) {
             channel_title: video.channel_title,
             privacyStatus: video.privacy_status || undefined,
           }));
+          
+          // Debug: Check if videos have complete information
+          const incompleteVideos = formattedVideos.filter(v => 
+            v.view_count === null || v.view_count === undefined || 
+            v.privacyStatus === null || v.privacyStatus === undefined
+          );
+          if (incompleteVideos.length > 0) {
+            console.log('[DEBUG] WARNING: Found', incompleteVideos.length, 'videos with incomplete data:', 
+              incompleteVideos.map(v => ({ id: v.id, view_count: v.view_count, privacyStatus: v.privacyStatus }))
+            );
+          }
+          
           const hasMore = endIndex < totalCachedCount || !!storedNextPageToken;
           const nextOffset = endIndex < totalCachedCount ? endIndex : null;
           console.log('[DEBUG] Returning paginated cached videos:', {
-            offset, endIndex, totalCachedCount, hasMore, nextOffset, videosReturned: formattedVideos.length
+            offset, endIndex, totalCachedCount, hasMore, nextOffset, videosReturned: formattedVideos.length,
+            incompleteVideosCount: incompleteVideos.length
           });
           return res.status(200).json({
             videos: formattedVideos,
@@ -249,46 +262,84 @@ async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to re-query cached videos after upsert.' });
     }
 
+    // 4. Fetch detailed stats for ALL videos in the cache (not just paged ones)
+    // This ensures all cached videos have complete information
+    const allVideoIds = updatedVideosFromDb.map(v => v.youtube_video_id);
+    console.log('[DEBUG] Fetching detailed stats for all', allVideoIds.length, 'videos in cache');
+    
+    // YouTube API has a limit of 50 video IDs per request, so we need to batch
+    const batchSize = 50;
+    const detailedStatsMap = {};
+    
+    for (let i = 0; i < allVideoIds.length; i += batchSize) {
+      const batchIds = allVideoIds.slice(i, i + batchSize);
+      const batchIdsString = batchIds.join(',');
+      
+      const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails,status&id=${batchIdsString}`;
+      console.log('[DEBUG] Fetching detailed video stats batch', Math.floor(i/batchSize) + 1, 'from:', statsUrl);
+      
+      const statsRes = await fetch(statsUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const statsData = await statsRes.json();
+      
+      if (!statsRes.ok || !statsData.items) {
+        console.error('[DEBUG] Failed to fetch detailed stats for batch:', statsRes.status, statsData);
+        continue; // Continue with other batches even if one fails
+      }
+      
+      // Store detailed stats in map
+      statsData.items.forEach(item => {
+        detailedStatsMap[item.id] = {
+          view_count: parseInt(item.statistics.viewCount) || 0,
+          like_count: parseInt(item.statistics.likeCount) || 0,
+          comment_count: parseInt(item.statistics.commentCount) || 0,
+          duration: item.contentDetails.duration,
+          privacy_status: item.status?.privacyStatus || null,
+          published_at: item.snippet.publishedAt, // Use the more accurate published date
+        };
+      });
+    }
+    
+    // 5. Update all videos in the database with detailed stats
+    console.log('[DEBUG] Updating', Object.keys(detailedStatsMap).length, 'videos with detailed stats');
+    for (const [videoId, stats] of Object.entries(detailedStatsMap)) {
+      await supabase
+        .from('youtube_videos')
+        .update({
+          view_count: stats.view_count,
+          like_count: stats.like_count,
+          comment_count: stats.comment_count,
+          duration: stats.duration,
+          privacy_status: stats.privacy_status,
+          published_at: stats.published_at, // Update with more accurate date
+        })
+        .eq('user_id', userId)
+        .eq('youtube_video_id', videoId);
+    }
+
+    // 6. Now get the paged videos with complete information
     const startIndex = offset;
     const endIndex = offset + limit;
     const pagedVideos = updatedVideosFromDb.slice(startIndex, endIndex);
-    const pagedVideoIds = pagedVideos.map(v => v.youtube_video_id).join(',');
-
-    // Fetch detailed stats for the paged videos
-    const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails,status&id=${pagedVideoIds}`;
-    console.log('[DEBUG] Fetching detailed video stats from:', statsUrl);
-    const statsRes = await fetch(statsUrl, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    const statsData = await statsRes.json();
-    if (!statsRes.ok || !statsData.items) {
-      return res.status(500).json({ error: 'Failed to fetch video details', message: 'Could not get video stats.' });
-    }
-    // Map videoId to privacyStatus for upsert
-    const privacyStatusMap = {};
-    statsData.items.forEach(item => {
-      privacyStatusMap[item.id] = item.status?.privacyStatus || undefined;
-    });
-    // Upsert privacy_status for each video
-    for (const item of statsData.items) {
-      await supabase.from('youtube_videos').update({ privacy_status: item.status?.privacyStatus || null }).eq('user_id', userId).eq('youtube_video_id', item.id);
-    }
-    const detailedVideos = statsData.items.map(item => {
-      const privacyStatus = item.status?.privacyStatus || undefined;
-      console.log('[DEBUG] Video', item.id, 'privacyStatus:', privacyStatus);
+    
+    // Format the paged videos with complete information
+    const detailedVideos = pagedVideos.map(video => {
+      const stats = detailedStatsMap[video.youtube_video_id] || {};
+      console.log('[DEBUG] Video', video.youtube_video_id, 'privacyStatus:', stats.privacy_status);
       return {
-        id: item.id,
-        title: item.snippet.title,
-        description: item.snippet.description,
-        thumbnail_url: item.snippet.thumbnails?.high?.url || '',
-        published_at: item.snippet.publishedAt,
-        view_count: parseInt(item.statistics.viewCount) || 0,
-        like_count: parseInt(item.statistics.likeCount) || 0,
-        comment_count: parseInt(item.statistics.commentCount) || 0,
-        duration: item.contentDetails.duration,
-        channel_id: item.snippet.channelId,
-        channel_title: item.snippet.channelTitle,
-        privacyStatus,
+        id: video.youtube_video_id,
+        title: video.title,
+        description: video.description,
+        thumbnail_url: video.thumbnail_url,
+        published_at: stats.published_at || video.published_at,
+        view_count: stats.view_count || video.view_count || 0,
+        like_count: stats.like_count || video.like_count || 0,
+        comment_count: stats.comment_count || video.comment_count || 0,
+        duration: stats.duration || video.duration,
+        channel_id: video.channel_id,
+        channel_title: video.channel_title,
+        privacyStatus: stats.privacy_status || video.privacy_status || undefined,
       };
     });
 
