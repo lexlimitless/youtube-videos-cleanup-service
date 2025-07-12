@@ -207,8 +207,8 @@ export default function TrackableLinkForm() {
         </h1>
       </div>
 
-      {/* Action Buttons - Moved to top */}
-      <div className="flex gap-4 mb-6">
+      {/* Action Buttons - Moved to top and right */}
+      <div className="flex gap-4 mb-6 justify-end">
         <button
           type="button"
           onClick={() => navigate('/links')}

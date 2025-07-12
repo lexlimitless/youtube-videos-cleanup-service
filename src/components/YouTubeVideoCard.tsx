@@ -65,7 +65,7 @@ export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTub
 
       {/* Video info */}
       <div className="p-3">
-        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 leading-tight" title={video.title || ''}>
+        <h3 className="font-medium text-gray-900 text-sm line-clamp-3 leading-tight" title={video.title || ''}>
           {video.title || 'Untitled Video'}
         </h3>
       </div>
