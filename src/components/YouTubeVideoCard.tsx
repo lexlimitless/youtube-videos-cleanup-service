@@ -6,13 +6,13 @@ interface YouTubeVideo {
   description: string;
   thumbnail_url: string;
   published_at: string;
-  view_count: number;
-  like_count: number;
-  comment_count: number;
-  duration: string;
+  view_count: number | null;
+  like_count: number | null;
+  comment_count: number | null;
+  duration: string | null;
   channel_id: string;
   channel_title: string;
-  privacyStatus?: string;
+  privacyStatus?: string | null;
 }
 
 interface YouTubeVideoCardProps {
@@ -21,25 +21,18 @@ interface YouTubeVideoCardProps {
   onSelect: (video: YouTubeVideo) => void;
 }
 
-function formatDuration(isoDuration: string): string {
-  // Parse ISO 8601 duration to hh:mm:ss or mm:ss
-  if (!isoDuration) return '';
-  
-  const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  if (!match) return '';
-  const [, h, m, s] = match.map(x => parseInt(x || '0', 10));
-  if (h) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
+
 
 export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTubeVideoCardProps) {
   const [showDesc, setShowDesc] = useState(false);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 
   // Debug: log privacyStatus for each video card
   console.log('[DEBUG] Rendering video card privacyStatus:', video.privacyStatus);
 
-  const formatViewCount = (count: number): string => {
-    if (!count || count < 0) return '0 views';
+  const formatViewCount = (count: number | null): string => {
+    if (count === null || count === undefined) return 'Loading...';
+    if (count < 0) return '0 views';
     if (count >= 1000000) {
       return `${(count / 1000000).toFixed(1)}M views`;
     } else if (count >= 1000) {
@@ -74,6 +67,16 @@ export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTub
     }
   };
 
+  const formatDuration = (isoDuration: string | null): string => {
+    if (!isoDuration) return '';
+    
+    const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+    if (!match) return '';
+    const [, h, m, s] = match.map(x => parseInt(x || '0', 10));
+    if (h) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  };
+
   return (
     <div 
       className={`relative bg-white rounded-lg shadow-md overflow-hidden cursor-pointer transition-all duration-200 border-2 ${
@@ -104,7 +107,7 @@ export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTub
           className="w-full h-full object-cover"
         />
         <div className="absolute bottom-1 right-1 bg-black bg-opacity-75 text-white text-xs px-1 py-0.5 rounded">
-          {formatDuration(video.duration || '')}
+          {video.duration ? formatDuration(video.duration) : ''}
         </div>
       </div>
 
@@ -114,20 +117,22 @@ export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTub
           {video.title || 'Untitled Video'}
         </h3>
         <div className="flex flex-col text-xs text-gray-500 mt-2">
-          <span>{formatViewCount(video.view_count || 0)}</span>
+          <span>{formatViewCount(video.view_count)}</span>
           <span>{formatDate(video.published_at || '')}</span>
         </div>
-        {/* Video status label */}
-        <div className="mt-2 text-xs">
-          <span className={`inline-block px-2 py-1 rounded font-semibold ${
-            video.privacyStatus === 'public' ? 'bg-green-100 text-green-700' :
-            video.privacyStatus === 'private' ? 'bg-gray-200 text-gray-700' :
-            video.privacyStatus === 'unlisted' ? 'bg-yellow-100 text-yellow-700' :
-            'bg-gray-100 text-gray-500'
-          }`}>
-            {video.privacyStatus ? video.privacyStatus.charAt(0).toUpperCase() + video.privacyStatus.slice(1) : 'Public'}
-          </span>
-        </div>
+        {/* Video status label - only show if we have privacy status */}
+        {video.privacyStatus && (
+          <div className="mt-2 text-xs">
+            <span className={`inline-block px-2 py-1 rounded font-semibold ${
+              video.privacyStatus === 'public' ? 'bg-green-100 text-green-700' :
+              video.privacyStatus === 'private' ? 'bg-gray-200 text-gray-700' :
+              video.privacyStatus === 'unlisted' ? 'bg-yellow-100 text-yellow-700' :
+              'bg-gray-100 text-gray-500'
+            }`}>
+              {video.privacyStatus.charAt(0).toUpperCase() + video.privacyStatus.slice(1)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Hover overlay */}

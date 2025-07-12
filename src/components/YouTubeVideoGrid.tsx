@@ -8,12 +8,13 @@ interface YouTubeVideo {
   description: string;
   thumbnail_url: string;
   published_at: string;
-  view_count: number;
-  like_count: number;
-  comment_count: number;
-  duration: string;
+  view_count: number | null;
+  like_count: number | null;
+  comment_count: number | null;
+  duration: string | null;
   channel_id: string;
   channel_title: string;
+  privacyStatus?: string | null;
 }
 
 interface YouTubeVideoGridProps {
@@ -112,9 +113,44 @@ export default function YouTubeVideoGrid({ onVideoSelect, selectedVideo }: YouTu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleVideoSelect = (video: YouTubeVideo) => {
+  const handleVideoSelect = async (video: YouTubeVideo) => {
     if (selectedVideo?.id === video.id) {
       onVideoSelect(null); // Deselect if same video
+      return;
+    }
+
+    // Check if video has detailed information
+    const hasDetailedInfo = video.view_count !== null && 
+                           video.like_count !== null && 
+                           video.comment_count !== null && 
+                           video.duration !== null && 
+                           video.privacyStatus !== null;
+
+    if (!hasDetailedInfo) {
+      // Fetch detailed information
+      try {
+        const token = await getToken();
+        const response = await fetch(`/api/user/youtube/video-details?videoId=${video.id}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        
+        if (response.ok) {
+          const detailedVideo = await response.json();
+          // Update the video in the local state with detailed information
+          setVideos(prev => prev.map(v => 
+            v.id === video.id ? detailedVideo : v
+          ));
+          onVideoSelect(detailedVideo);
+        } else {
+          console.error('Failed to fetch video details');
+          onVideoSelect(video); // Still select the video even if details fail
+        }
+      } catch (error) {
+        console.error('Error fetching video details:', error);
+        onVideoSelect(video); // Still select the video even if details fail
+      }
     } else {
       onVideoSelect(video);
     }

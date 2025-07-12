@@ -72,9 +72,9 @@ async function handler(req, res) {
 
     // Check cache for all videos (to determine if cache is fresh)
     const { data: allVideosFromDb, error: allDbError } = await supabase
-      .from('youtube_videos')
-      .select('*')
-      .eq('user_id', userId)
+        .from('youtube_videos')
+        .select('*')
+        .eq('user_id', userId)
       .order('published_at', { ascending: false });
 
     // Get the stored next page token from user_integrations
@@ -88,7 +88,7 @@ async function handler(req, res) {
     });
 
     if (!allDbError && allVideosFromDb && allVideosFromDb.length > 0) {
-      // Check if all videos are fresh (fetched_at within last hour)
+        // Check if all videos are fresh (fetched_at within last hour)
       const freshVideos = allVideosFromDb.filter(v => v.fetched_at && new Date(v.fetched_at) > oneHourAgo);
       const staleVideos = allVideosFromDb.filter(v => !v.fetched_at || new Date(v.fetched_at) <= oneHourAgo);
       
@@ -102,7 +102,7 @@ async function handler(req, res) {
       cacheIsFresh = freshVideos.length === allVideosFromDb.length;
       totalCachedCount = allVideosFromDb.length;
       
-      if (cacheIsFresh) {
+        if (cacheIsFresh) {
         const startIndex = offset;
         const endIndex = offset + limit;
         cachedVideos = allVideosFromDb.slice(startIndex, endIndex);
@@ -121,45 +121,32 @@ async function handler(req, res) {
           });
         }
         if (cachedVideos.length === limit || endIndex <= allVideosFromDb.length) {
-          const formattedVideos = cachedVideos.map(video => ({
-            id: video.youtube_video_id,
-            title: video.title,
-            description: video.description,
-            thumbnail_url: video.thumbnail_url,
-            published_at: video.published_at,
-            view_count: video.view_count,
-            like_count: video.like_count,
-            comment_count: video.comment_count,
-            duration: video.duration,
-            channel_id: video.channel_id,
-            channel_title: video.channel_title,
+      const formattedVideos = cachedVideos.map(video => ({
+        id: video.youtube_video_id,
+        title: video.title,
+        description: video.description,
+        thumbnail_url: video.thumbnail_url,
+        published_at: video.published_at,
+        view_count: video.view_count,
+        like_count: video.like_count,
+        comment_count: video.comment_count,
+        duration: video.duration,
+        channel_id: video.channel_id,
+        channel_title: video.channel_title,
             privacyStatus: video.privacy_status || undefined,
-          }));
-          
-          // Debug: Check if videos have complete information
-          const incompleteVideos = formattedVideos.filter(v => 
-            v.view_count === null || v.view_count === undefined || 
-            v.privacyStatus === null || v.privacyStatus === undefined
-          );
-          if (incompleteVideos.length > 0) {
-            console.log('[DEBUG] WARNING: Found', incompleteVideos.length, 'videos with incomplete data:', 
-              incompleteVideos.map(v => ({ id: v.id, view_count: v.view_count, privacyStatus: v.privacyStatus }))
-            );
-          }
-          
+      }));
           const hasMore = endIndex < totalCachedCount || !!storedNextPageToken;
           const nextOffset = endIndex < totalCachedCount ? endIndex : null;
           console.log('[DEBUG] Returning paginated cached videos:', {
-            offset, endIndex, totalCachedCount, hasMore, nextOffset, videosReturned: formattedVideos.length,
-            incompleteVideosCount: incompleteVideos.length
+            offset, endIndex, totalCachedCount, hasMore, nextOffset, videosReturned: formattedVideos.length
           });
-          return res.status(200).json({
-            videos: formattedVideos,
+      return res.status(200).json({
+        videos: formattedVideos,
             offset: offset,
             nextOffset: nextOffset,
             hasMore: hasMore,
             totalResults: totalCachedCount,
-            cached: true,
+        cached: true,
             youtubePageToken: storedNextPageToken,
           });
         }
@@ -246,7 +233,8 @@ async function handler(req, res) {
       channel_id: item.snippet.channelId,
       channel_title: item.snippet.channelTitle,
       fetched_at: now.toISOString(),
-      // privacy_status will be updated after fetching details
+      // Detailed stats (view_count, like_count, comment_count, duration, privacy_status) 
+      // will be fetched on-demand when user selects a video
     }));
     // 3. Upsert these 50 videos into Supabase
     await supabase.from('youtube_videos').upsert(videos, { onConflict: 'user_id,youtube_video_id', ignoreDuplicates: false });
@@ -262,93 +250,34 @@ async function handler(req, res) {
       return res.status(500).json({ error: 'Failed to re-query cached videos after upsert.' });
     }
 
-    // 4. Fetch detailed stats for ALL videos in the cache (not just paged ones)
-    // This ensures all cached videos have complete information
-    const allVideoIds = updatedVideosFromDb.map(v => v.youtube_video_id);
-    console.log('[DEBUG] Fetching detailed stats for all', allVideoIds.length, 'videos in cache');
-    
-    // YouTube API has a limit of 50 video IDs per request, so we need to batch
-    const batchSize = 50;
-    const detailedStatsMap = {};
-    
-    for (let i = 0; i < allVideoIds.length; i += batchSize) {
-      const batchIds = allVideoIds.slice(i, i + batchSize);
-      const batchIdsString = batchIds.join(',');
-      
-      const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails,status&id=${batchIdsString}`;
-      console.log('[DEBUG] Fetching detailed video stats batch', Math.floor(i/batchSize) + 1, 'from:', statsUrl);
-      
-      const statsRes = await fetch(statsUrl, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      const statsData = await statsRes.json();
-      
-      if (!statsRes.ok || !statsData.items) {
-        console.error('[DEBUG] Failed to fetch detailed stats for batch:', statsRes.status, statsData);
-        continue; // Continue with other batches even if one fails
-      }
-      
-      // Store detailed stats in map
-      statsData.items.forEach(item => {
-        detailedStatsMap[item.id] = {
-          view_count: parseInt(item.statistics.viewCount) || 0,
-          like_count: parseInt(item.statistics.likeCount) || 0,
-          comment_count: parseInt(item.statistics.commentCount) || 0,
-          duration: item.contentDetails.duration,
-          privacy_status: item.status?.privacyStatus || null,
-          published_at: item.snippet.publishedAt, // Use the more accurate published date
-        };
-      });
-    }
-    
-    // 5. Update all videos in the database with detailed stats
-    console.log('[DEBUG] Updating', Object.keys(detailedStatsMap).length, 'videos with detailed stats');
-    for (const [videoId, stats] of Object.entries(detailedStatsMap)) {
-      await supabase
-        .from('youtube_videos')
-        .update({
-          view_count: stats.view_count,
-          like_count: stats.like_count,
-          comment_count: stats.comment_count,
-          duration: stats.duration,
-          privacy_status: stats.privacy_status,
-          published_at: stats.published_at, // Update with more accurate date
-        })
-        .eq('user_id', userId)
-        .eq('youtube_video_id', videoId);
-    }
-
-    // 6. Now get the paged videos with complete information
     const startIndex = offset;
     const endIndex = offset + limit;
     const pagedVideos = updatedVideosFromDb.slice(startIndex, endIndex);
     
-    // Format the paged videos with complete information
-    const detailedVideos = pagedVideos.map(video => {
-      const stats = detailedStatsMap[video.youtube_video_id] || {};
-      console.log('[DEBUG] Video', video.youtube_video_id, 'privacyStatus:', stats.privacy_status);
-      return {
-        id: video.youtube_video_id,
-        title: video.title,
-        description: video.description,
-        thumbnail_url: video.thumbnail_url,
-        published_at: stats.published_at || video.published_at,
-        view_count: stats.view_count || video.view_count || 0,
-        like_count: stats.like_count || video.like_count || 0,
-        comment_count: stats.comment_count || video.comment_count || 0,
-        duration: stats.duration || video.duration,
-        channel_id: video.channel_id,
-        channel_title: video.channel_title,
-        privacyStatus: stats.privacy_status || video.privacy_status || undefined,
-      };
-    });
+    // Return basic video information from playlist API
+    // Detailed stats will be fetched on-demand when user selects a video
+    const basicVideos = pagedVideos.map(video => ({
+      id: video.youtube_video_id,
+      title: video.title,
+      description: video.description,
+      thumbnail_url: video.thumbnail_url,
+      published_at: video.published_at,
+      channel_id: video.channel_id,
+      channel_title: video.channel_title,
+      // These fields will be null/undefined initially and populated when video is selected
+      view_count: video.view_count || null,
+      like_count: video.like_count || null,
+      comment_count: video.comment_count || null,
+      duration: video.duration || null,
+      privacyStatus: video.privacy_status || null,
+    }));
 
     const totalCached = updatedVideosFromDb.length;
     const hasMore = endIndex < totalCached || !!nextPageToken;
     const nextOffset = endIndex < totalCached ? endIndex : null;
 
     return res.status(200).json({
-      videos: detailedVideos,
+      videos: basicVideos,
       offset: offset,
       nextOffset: nextOffset,
       hasMore: hasMore,
