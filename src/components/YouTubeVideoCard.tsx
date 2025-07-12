@@ -27,8 +27,7 @@ export default function YouTubeVideoCard({ video, isSelected, onSelect }: YouTub
   const [showDesc, setShowDesc] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 
-  // Debug: log privacyStatus for each video card
-  console.log('[DEBUG] Rendering video card privacyStatus:', video.privacyStatus);
+
 
 
 
