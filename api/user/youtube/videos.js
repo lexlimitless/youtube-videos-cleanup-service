@@ -301,8 +301,18 @@ async function handler(req, res) {
     }));
 
     const totalCached = updatedVideosFromDb.length;
-    const hasMore = endIndex < totalCached || !!nextPageToken;
-    const nextOffset = endIndex < totalCached ? endIndex : null;
+    // Robust hasMore logic:
+    // - If nextPageToken is null and we've reached the end of the cached videos, hasMore should be false
+    // - Otherwise, hasMore is true if nextPageToken exists and there are videos in this page
+    let hasMore = false;
+    if (nextPageToken && basicVideos.length > 0) {
+      hasMore = true;
+    } else if (!nextPageToken && endIndex < totalCached) {
+      hasMore = true;
+    } else {
+      hasMore = false;
+    }
+    const nextOffset = hasMore ? endIndex : null;
 
     return res.status(200).json({
       videos: basicVideos,
