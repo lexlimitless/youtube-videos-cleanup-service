@@ -1,0 +1,28 @@
+{
+  "name": "youtube-videos-cleanup-service",
+  "version": "1.0.0",
+  "description": "A standalone service for cleaning up stale YouTube videos from Supabase database",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "deploy": "cd functions/cleanup-youtube-videos && ./deploy.sh",
+    "test-function": "cd functions/cleanup-youtube-videos && node test.ts"
+  },
+  "keywords": [
+    "supabase",
+    "youtube",
+    "cleanup",
+    "edge-functions",
+    "github-actions"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/youtube-videos-cleanup-service.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/youtube-videos-cleanup-service/issues"
+  },
+  "homepage": "https://github.com/yourusername/youtube-videos-cleanup-service#readme"
+} 

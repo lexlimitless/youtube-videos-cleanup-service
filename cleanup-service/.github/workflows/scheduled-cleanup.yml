@@ -1,0 +1,112 @@
+name: Scheduled YouTube Videos Cleanup
+
+on:
+  schedule:
+    # Run every Sunday at 3 AM UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch: # Allow manual triggering
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run YouTube Videos Cleanup
+      id: cleanup
+      env:
+        SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      run: |
+        chmod +x scripts/scheduled-cleanup.sh
+        ./scripts/scheduled-cleanup.sh
+        
+    - name: Send Success Notification
+      if: success()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Get the cleanup results from the previous step
+          const results = ${{ steps.cleanup.outputs.results || '{}' }};
+          
+          // Create a detailed success report
+          const report = `## YouTube Videos Cleanup - SUCCESS ✅
+          
+          **Run Time:** ${new Date().toISOString()}
+          **Status:** Cleanup completed successfully
+          
+          ### Summary:
+          - Videos before cleanup: ${results.totalBefore || 'N/A'}
+          - Videos after cleanup: ${results.totalAfter || 'N/A'}
+          - Videos deleted: ${results.videosDeleted || 'N/A'}
+          - Errors encountered: ${results.errors || '0'}
+          
+          ### Details:
+          ${results.details || 'No additional details available'}
+          
+          ### Notification:
+          You will receive a GitHub notification for this issue. To get email notifications:
+          1. Go to your GitHub profile settings
+          2. Navigate to Notifications
+          3. Enable email notifications for issues in this repository
+          
+          ---
+          *This is an automated notification from your YouTube Videos Cleanup system.*`;
+          
+          // Create a GitHub issue with the report
+          const issue = await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `YouTube Videos Cleanup - SUCCESS - ${new Date().toISOString().split('T')[0]}`,
+            body: report,
+            labels: ['cleanup', 'success', 'automated']
+          });
+          
+          console.log('Success notification created:', issue.data.html_url);
+          
+    - name: Send Failure Notification
+      if: failure()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Create a detailed failure report
+          const report = `## YouTube Videos Cleanup - FAILED ❌
+          
+          **Run Time:** ${new Date().toISOString()}
+          **Status:** Cleanup failed
+          
+          ### Error Details:
+          The scheduled YouTube videos cleanup failed. Please check the GitHub Actions logs for detailed error information.
+          
+          **Action Required:** Please investigate the failure and ensure the cleanup system is working properly.
+          
+          ### Next Steps:
+          1. Check the GitHub Actions logs for this run
+          2. Verify Supabase credentials and permissions
+          3. Test the cleanup function manually if needed
+          4. Fix any issues and re-run the workflow
+          
+          ### Notification:
+          You will receive a GitHub notification for this issue. To get email notifications:
+          1. Go to your GitHub profile settings
+          2. Navigate to Notifications
+          3. Enable email notifications for issues in this repository
+          
+          ---
+          *This is an automated notification from your YouTube Videos Cleanup system.*`;
+          
+          // Create a GitHub issue with the failure report
+          const issue = await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `YouTube Videos Cleanup - FAILED - ${new Date().toISOString().split('T')[0]}`,
+            body: report,
+            labels: ['cleanup', 'failure', 'automated', 'urgent']
+          });
+          
+          console.log('Failure notification created:', issue.data.html_url); 
