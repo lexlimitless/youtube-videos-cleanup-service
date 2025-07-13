@@ -1,0 +1,23 @@
+{
+  "name": "cleanup-youtube-videos",
+  "description": "Cleanup function to remove stale and old YouTube videos from the database",
+  "version": "1.0.0",
+  "defaults": {
+    "removeUnreferenced": true,
+    "maxAgeDays": 90,
+    "staleFetchDays": 30,
+    "inactiveUserDays": 180,
+    "removeDisconnected": true,
+    "dryRun": false
+  },
+  "schedules": {
+    "daily": {
+      "cron": "0 2 * * *",
+      "description": "Daily cleanup at 2 AM UTC"
+    },
+    "weekly": {
+      "cron": "0 3 * * 0",
+      "description": "Weekly cleanup on Sundays at 3 AM UTC"
+    }
+  }
+} 
