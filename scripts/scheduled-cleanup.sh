@@ -70,6 +70,36 @@ if [ "$HTTP_STATUS" -eq 200 ]; then
     VIDEOS_DELETED=$(echo "$RESPONSE_BODY" | jq -r '.summary.videosDeleted // 0')
     TOTAL_BEFORE=$(echo "$RESPONSE_BODY" | jq -r '.summary.totalVideosBefore // 0')
     TOTAL_AFTER=$(echo "$RESPONSE_BODY" | jq -r '.summary.totalVideosAfter // 0')
+    ERRORS=$(echo "$RESPONSE_BODY" | jq -r '.errors // [] | length')
+    
+    # Extract detailed breakdown for GitHub Actions
+    UNREFERENCED_DELETED=$(echo "$RESPONSE_BODY" | jq -r '.summary.unreferencedDeleted // 0')
+    OLD_VIDEOS_DELETED=$(echo "$RESPONSE_BODY" | jq -r '.summary.oldVideosDeleted // 0')
+    STALE_FETCH_DELETED=$(echo "$RESPONSE_BODY" | jq -r '.summary.staleFetchDeleted // 0')
+    INACTIVE_USER_DELETED=$(echo "$RESPONSE_BODY" | jq -r '.summary.inactiveUserDeleted // 0')
+    DISCONNECTED_DELETED=$(echo "$RESPONSE_BODY" | jq -r '.summary.disconnectedDeleted // 0')
+    
+    # Create detailed report
+    DETAILS=""
+    if [ "$UNREFERENCED_DELETED" -gt 0 ]; then
+        DETAILS="${DETAILS}- Unreferenced videos deleted: $UNREFERENCED_DELETED\n"
+    fi
+    if [ "$OLD_VIDEOS_DELETED" -gt 0 ]; then
+        DETAILS="${DETAILS}- Old videos (>90 days) deleted: $OLD_VIDEOS_DELETED\n"
+    fi
+    if [ "$STALE_FETCH_DELETED" -gt 0 ]; then
+        DETAILS="${DETAILS}- Stale fetch videos deleted: $STALE_FETCH_DELETED\n"
+    fi
+    if [ "$INACTIVE_USER_DELETED" -gt 0 ]; then
+        DETAILS="${DETAILS}- Inactive user videos deleted: $INACTIVE_USER_DELETED\n"
+    fi
+    if [ "$DISCONNECTED_DELETED" -gt 0 ]; then
+        DETAILS="${DETAILS}- Disconnected user videos deleted: $DISCONNECTED_DELETED\n"
+    fi
+    
+    if [ -z "$DETAILS" ]; then
+        DETAILS="No videos were deleted during this cleanup run."
+    fi
     
     print_success "Cleanup completed:"
     echo "  - Videos before: $TOTAL_BEFORE"
@@ -77,7 +107,6 @@ if [ "$HTTP_STATUS" -eq 200 ]; then
     echo "  - Videos deleted: $VIDEOS_DELETED"
     
     # Check for errors
-    ERRORS=$(echo "$RESPONSE_BODY" | jq -r '.errors // [] | length')
     if [ "$ERRORS" -gt 0 ]; then
         print_warning "Cleanup completed with $ERRORS errors"
         echo "$RESPONSE_BODY" | jq -r '.errors[]' | while read -r error; do
@@ -85,9 +114,20 @@ if [ "$HTTP_STATUS" -eq 200 ]; then
         done
     fi
     
+    # Output results for GitHub Actions (if running in GitHub Actions)
+    if [ -n "$GITHUB_OUTPUT" ]; then
+        echo "results={\"totalBefore\":\"$TOTAL_BEFORE\",\"totalAfter\":\"$TOTAL_AFTER\",\"videosDeleted\":\"$VIDEOS_DELETED\",\"errors\":\"$ERRORS\",\"details\":\"$DETAILS\"}" >> $GITHUB_OUTPUT
+    fi
+    
 else
     print_error "Cleanup function failed with HTTP status: $HTTP_STATUS"
     print_error "Response: $RESPONSE_BODY"
+    
+    # Output error for GitHub Actions (if running in GitHub Actions)
+    if [ -n "$GITHUB_OUTPUT" ]; then
+        echo "results={\"error\":\"HTTP $HTTP_STATUS\",\"details\":\"$RESPONSE_BODY\"}" >> $GITHUB_OUTPUT
+    fi
+    
     exit 1
 fi
 
