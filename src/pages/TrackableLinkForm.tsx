@@ -104,18 +104,34 @@ export default function TrackableLinkForm() {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  // Handler to update both selected video and form title
+  const handleYouTubeVideoSelect = (video: YouTubeVideo | null) => {
+    setSelectedYouTubeVideo(video);
+    if (video) {
+      setForm(prev => ({ ...prev, title: video.title }));
+    } else {
+      setForm(prev => ({ ...prev, title: '' }));
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    console.log('handleSave called');
+    if (!user) {
+      console.error('No user found');
+      return;
+    }
 
     // Validate required fields
     if (!form.platform) {
       alert('Please select a platform');
+      console.error('Validation failed: platform missing');
       return;
     }
 
     if (!form.url) {
       alert('Please enter a destination URL');
+      console.error('Validation failed: url missing');
       return;
     }
 
@@ -123,6 +139,8 @@ export default function TrackableLinkForm() {
     try {
       const token = await getToken();
       if (!token) throw new Error("No auth token");
+      console.log('Form data:', form);
+      console.log('Selected YouTube video:', selectedYouTubeVideo);
 
       // If YouTube video is selected, fetch detailed information first
       if (form.platform === 'YouTube' && selectedYouTubeVideo?.id) {
@@ -132,7 +150,8 @@ export default function TrackableLinkForm() {
           });
           
           if (videoDetailsResponse.ok) {
-            console.log('Video details fetched and stored successfully');
+            const details = await videoDetailsResponse.json();
+            console.log('Fetched video details:', details);
           } else {
             console.warn('Failed to fetch video details, but continuing with link creation');
           }
@@ -163,7 +182,7 @@ export default function TrackableLinkForm() {
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({
             destination_url: form.url,
-            title: form.title || `Untitled Link`,
+            title: selectedYouTubeVideo?.title || form.title || `Untitled Link`,
             platform: form.platform,
             attribution_window_days: form.attribution_window_days,
             youtube_video_id: selectedYouTubeVideo?.id || null,
@@ -232,14 +251,20 @@ export default function TrackableLinkForm() {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Title
             </label>
-            <input
-              type="text"
-              name="title"
-              value={form.title}
-              onChange={handleFormChange}
-              placeholder="Enter a title for your link (optional)"
-              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-            />
+            {form.platform === 'YouTube' && selectedYouTubeVideo ? (
+              <div className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-gray-100 text-gray-700">
+                {selectedYouTubeVideo.title || 'Untitled Video'}
+              </div>
+            ) : (
+              <input
+                type="text"
+                name="title"
+                value={form.title}
+                onChange={handleFormChange}
+                placeholder="Enter a title for your link (optional)"
+                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              />
+            )}
           </div>
 
           <div>
@@ -301,7 +326,7 @@ export default function TrackableLinkForm() {
               </label>
               <div className="border border-gray-200 rounded-lg p-6 bg-gray-50">
                 <YouTubeVideoGrid
-                  onVideoSelect={setSelectedYouTubeVideo}
+                  onVideoSelect={handleYouTubeVideoSelect}
                   selectedVideo={selectedYouTubeVideo}
                 />
               </div>
